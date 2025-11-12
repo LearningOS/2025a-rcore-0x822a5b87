@@ -33,7 +33,8 @@ pub fn clear_bss() {
         fn sbss();
         fn ebss();
     }
-    (sbss as usize..ebss as usize).for_each(|a| unsafe { (a as *mut u8).write_volatile(0) });
+    (sbss as usize..ebss as usize)
+        .for_each(|a| unsafe { (a as *mut u8).write_volatile(0) });
 }
 
 /// the rust entry-point of os
@@ -75,5 +76,5 @@ pub fn rust_main() -> ! {
 
     use crate::board::QEMUExit;
     crate::board::QEMU_EXIT_HANDLE.exit_success(); // CI autotest success
-                                                   //crate::board::QEMU_EXIT_HANDLE.exit_failure(); // CI autoest failed
+    //crate::board::QEMU_EXIT_HANDLE.exit_failure(); // CI autoest failed
 }

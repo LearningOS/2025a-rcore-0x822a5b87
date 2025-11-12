@@ -32,6 +32,8 @@ impl Log for SimpleLogger {
 
 /// initiate logger
 pub fn init() {
+    // rust 静态变量必须显示的指定类型，下面会编译失败：Missing type for `static` item
+    // static LOGGER = SimpleLogger;
     static LOGGER: SimpleLogger = SimpleLogger;
     log::set_logger(&LOGGER).unwrap();
     log::set_max_level(match option_env!("LOG") {
