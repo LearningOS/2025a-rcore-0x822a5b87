@@ -4,14 +4,14 @@ DOCKER_NAME ?= rcore-docker
 
 docker:
 	@if docker ps -a --filter "name=^/${CONTAINER_NAME}$$" --format "{{.Names}}" | grep -q "${CONTAINER_NAME}"; then \
-		echo "✅ find existing cotainer: ${CONTAINER_NAME}，asscessing..."; \
+		echo "✅ find existing container: ${CONTAINER_NAME}，accessing..."; \
 		if ! docker ps --filter "name=^/${CONTAINER_NAME}$$" --format "{{.Names}}" | grep -q "${CONTAINER_NAME}"; then \
 			echo "🔧 container isn't running，start launching..."; \
 			docker start ${CONTAINER_NAME}; \
 		fi; \
 		docker exec -it ${CONTAINER_NAME} bash; \
 	else \
-		echo "🚀 no existing cotainer is found: ${CONTAINER_NAME}，start creating new cotainer..."; \
+		echo "🚀 no existing container is found: ${CONTAINER_NAME}，start creating new container..."; \
 		docker run --network host -it -d \
 			--name ${CONTAINER_NAME} \
 			-v ${CURDIR}:/mnt \
@@ -32,7 +32,7 @@ attach_docker:
 		fi; \
 		docker exec -it ${CONTAINER_NAME} bash; \
 	else \
-		echo "❌ no existing cotainer is found: ${CONTAINER_NAME}，please run 'make docker' to create container"; \
+		echo "❌ no existing container is found: ${CONTAINER_NAME}，please run 'make docker' to create container"; \
 	fi
 
 rebuild_docker:
