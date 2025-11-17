@@ -49,6 +49,13 @@ __alltraps:
     call trap_handler
 
 __restore:
+    # THIS IS IMPORTANT!!! a0 IS THE FIRST ARGUMENT OF __restore,
+    # WHICH MEANS a0 POINTS TO THE KERNEL STACK WHERE THE TrapContext IS STORED.
+    #
+    #    __restore(KERNEL_STACK.push_context(TrapContext::app_init_context(
+    #        APP_BASE_ADDRESS,
+    #        USER_STACK.get_sp(),
+    #    )) as *const _ as usize);
     # case1: start running app by __restore
     # case2: back to U after handling trap
     mv sp, a0

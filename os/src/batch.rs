@@ -75,6 +75,8 @@ impl AppManager {
         println!("[kernel] Loading app_{}", app_id);
         // clear app area
         core::slice::from_raw_parts_mut(APP_BASE_ADDRESS as *mut u8, APP_SIZE_LIMIT).fill(0);
+        // copy data from memory.
+        // as we mentioned before, the start pointer is app_start[n] and the end pointer is app_start[n+1]
         let app_src = core::slice::from_raw_parts(
             self.app_start[app_id] as *const u8,
             self.app_start[app_id + 1] - self.app_start[app_id],
@@ -105,11 +107,24 @@ lazy_static! {
             extern "C" {
                 fn _num_app();
             }
+            // parse application info from link_app.S
+            //
+            //_num_app:
+            // .quad 7
+            //     .quad app_0_start
+            //     ...
+            //     .quad app_6_end
             let num_app_ptr = _num_app as usize as *const usize;
+
             let num_app = num_app_ptr.read_volatile();
+            // This is essential: it is an array with a length equal to MAX_APP_NUM + 1,
+            // because the generated pointers include an extra pointer pointing to the end of the last application.
             let mut app_start: [usize; MAX_APP_NUM + 1] = [0; MAX_APP_NUM + 1];
+            // Skip the initial ".quad 7" (application count) and read all application-related entries, including the extra end pointer.
             let app_start_raw: &[usize] =
                 core::slice::from_raw_parts(num_app_ptr.add(1), num_app + 1);
+            // copy (num_app + 1) elements from app_start_raw, which includes all start pointer of application
+            // and the end pointer of the last application.
             app_start[..=num_app].copy_from_slice(app_start_raw);
             AppManager {
                 num_app,
@@ -145,6 +160,8 @@ pub fn run_next_app() -> ! {
         fn __restore(cx_addr: usize);
     }
     unsafe {
+        // After the application runs, restore the user context from the kernel stack.
+        // USER_STACK.get_sp() return the address pointing to the next address of self.data.
         __restore(KERNEL_STACK.push_context(TrapContext::app_init_context(
             APP_BASE_ADDRESS,
             USER_STACK.get_sp(),

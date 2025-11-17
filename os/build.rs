@@ -18,6 +18,7 @@ fn insert_app_data() -> Result<()> {
         .unwrap()
         .into_iter()
         .map(|dir_entry| {
+            // remove suffix: convert hello_world.bin to hello_world
             let mut name_with_ext = dir_entry.unwrap().file_name().into_string().unwrap();
             name_with_ext.drain(name_with_ext.find('.').unwrap()..name_with_ext.len());
             name_with_ext
