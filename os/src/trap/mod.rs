@@ -37,12 +37,17 @@ pub fn init() {
 
 #[no_mangle]
 /// handle an interrupt, exception, or system call from user space
+/// [`TrapContext`] is the context of the trap, which contains 32 registers, sstatus and sepc
 pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
     let scause = scause::read(); // get trap cause
     let stval = stval::read(); // get extra value
     match scause.cause() {
+        // handle ecall
         Trap::Exception(Exception::UserEnvCall) => {
+            // ecall is an instruction with 4 bytes, so we have to step forward 4 bytes; otherwise we will enter an infinite loop.
             cx.sepc += 4;
+            // As we mentioned before, a0 holds the return value, a0 ~ a6 hold the parameters of the called function;
+            // a7 holds the system call ID.
             cx.x[10] = syscall(cx.x[17], [cx.x[10], cx.x[11], cx.x[12]]) as usize;
         }
         Trap::Exception(Exception::StoreFault) | Trap::Exception(Exception::StorePageFault) => {
