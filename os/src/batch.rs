@@ -47,6 +47,18 @@ impl UserStack {
     }
 }
 
+/// task info struct
+#[repr(C)]
+#[derive(Debug)]
+pub struct Task {
+    /// name of app
+    pub num_app:[u8; 5],
+    /// start addr of app
+    pub app_start:usize,
+    /// end addr of app
+    pub app_end:usize,
+}
+
 struct AppManager {
     num_app: usize,
     current_app: usize,
@@ -96,6 +108,15 @@ impl AppManager {
         self.current_app
     }
 
+    pub fn get_current_task(&self) -> Task {
+        let current_app = self.current_app;
+        Task {
+            num_app: [b'a', b'p', b'p', b'_', b'0' + current_app as u8],
+            app_start: self.app_start[current_app],
+            app_end: self.app_start[current_app + 1],
+        }
+    }
+
     pub fn move_to_next_app(&mut self) {
         self.current_app += 1;
     }
@@ -143,6 +164,11 @@ pub fn init() {
 /// print apps info
 pub fn print_app_info() {
     APP_MANAGER.exclusive_access().print_app_info();
+}
+
+/// get task info
+pub fn get_task_info() -> Task {
+    APP_MANAGER.exclusive_access().get_current_task()
 }
 
 /// run next app
