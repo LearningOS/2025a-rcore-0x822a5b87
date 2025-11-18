@@ -28,6 +28,8 @@ mod board;
 use log::*;
 #[macro_use]
 mod console;
+mod stack_trace;
+
 pub mod batch;
 pub mod lang_items;
 pub mod logging;

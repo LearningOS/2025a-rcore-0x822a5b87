@@ -16,6 +16,7 @@ mod context;
 
 use crate::batch::run_next_app;
 use crate::syscall::syscall;
+use crate::stack_trace::print_stack_trace;
 use core::arch::global_asm;
 use riscv::register::{
     mtvec::TrapMode,
@@ -52,10 +53,16 @@ pub fn trap_handler(cx: &mut TrapContext) -> &mut TrapContext {
         }
         Trap::Exception(Exception::StoreFault) | Trap::Exception(Exception::StorePageFault) => {
             println!("[kernel] PageFault in application, kernel killed it.");
+            unsafe {
+                print_stack_trace();
+            }
             run_next_app();
         }
         Trap::Exception(Exception::IllegalInstruction) => {
             println!("[kernel] IllegalInstruction in application, kernel killed it.");
+            unsafe {
+                print_stack_trace();
+            }
             run_next_app();
         }
         _ => {
