@@ -85,10 +85,10 @@ impl AppManager {
         app_dst.copy_from_slice(app_src);
         // Memory fence about fetching the instruction memory
         // It is guaranteed that a subsequent instruction fetch must
-        // observes all previous writes to the instruction memory.
-        // Therefore, fence.i must be executed after we have loaded
+        // observe all previous writes to the instruction memory.
+        // Therefore, 'fence.i' must be executed after we have loaded
         // the code of the next app into the instruction memory.
-        // See also: riscv non-priv spec chapter 3, 'Zifencei' extension.
+        // See also: riscv non-privi spec chapter 3, 'Zifencei' extension.
         asm!("fence.i");
     }
 
