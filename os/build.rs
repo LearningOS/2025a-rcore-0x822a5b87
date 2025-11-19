@@ -36,6 +36,10 @@ _num_app:
         apps.len()
     )?;
 
+    if apps.len() == 0 {
+        panic!("no app found in {}", TARGET_PATH);
+    }
+
     for i in 0..apps.len() {
         writeln!(f, r#"    .quad app_{}_start"#, i)?;
     }
