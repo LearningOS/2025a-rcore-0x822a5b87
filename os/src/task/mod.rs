@@ -85,6 +85,7 @@ impl TaskManager {
         let mut _unused = TaskContext::zero_init();
         // before this, we should drop local variables that must be dropped manually
         unsafe {
+            // no need to save _unused, because it will never be switched back
             __switch(&mut _unused as *mut TaskContext, next_task_cx_ptr);
         }
         panic!("unreachable in run_first_task!");
@@ -110,13 +111,40 @@ impl TaskManager {
     fn find_next_task(&self) -> Option<usize> {
         let inner = self.inner.exclusive_access();
         let current = inner.current_task;
+        // This is a simple round-robin scheduler, and I think it's quite ingenious.
+        // Our goal is to search for a qualified task starting from the task right after the current task to the end of the task list.
+        // If no qualified task is found in this range, we continue searching from the beginning of the task list up to the current task.
+        //
+        // Think of the task list as a ring; the search range will be as follows:
+        // ```text
+        // [
+        //     current + 1,
+        //     ...,
+        //     num_app - 1,
+        //     0,
+        //     ...,
+        //     current
+        // ]
+        // ```
+        // The current task is included because it is the last resort.
+        // Additionally, this search range is exactly equivalent to:
+        // ```text
+        // [
+        //     (current + 1) % num_app,
+        //     ...,
+        //     (current + (num_app - current - 1)) % num_app,
+        //     ((current + 1) + (num_app - (current + 1) - 1)) % num_app, /// Equals 0
+        //     ...,
+        //     current
+        // ]
+        // ```
         (current + 1..current + self.num_app + 1)
             .map(|id| id % self.num_app)
             .find(|id| inner.tasks[*id].task_status == TaskStatus::Ready)
     }
 
     /// Switch current `Running` task to the task we have found,
-    /// or there is no `Ready` task and we can exit with all applications completed
+    /// or there is no `Ready` task, and we can exit with all applications completed
     fn run_next_task(&self) {
         if let Some(next) = self.find_next_task() {
             let mut inner = self.inner.exclusive_access();
