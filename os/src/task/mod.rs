@@ -43,6 +43,8 @@ pub struct TaskManager {
 pub struct TaskManagerInner {
     /// task list
     tasks: [TaskControlBlock; MAX_APP_NUM],
+    /// statistics for system call
+    syscalls: [[isize; u8::MAX as usize]; MAX_APP_NUM],
     /// id of current `Running` task
     current_task: usize,
 }
@@ -59,12 +61,14 @@ lazy_static! {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
             task.task_status = TaskStatus::Ready;
         }
+
         TaskManager {
             num_app,
             inner: unsafe {
                 UPSafeCell::new(TaskManagerInner {
                     tasks,
                     current_task: 0,
+                    syscalls: [[0; u8::MAX as usize]; MAX_APP_NUM],
                 })
             },
         }
@@ -171,7 +175,7 @@ pub fn run_first_task() {
 }
 
 /// Switch current `Running` task to the task we have found,
-/// or there is no `Ready` task and we can exit with all applications completed
+/// or there is no `Ready` task, and we can exit with all applications completed
 fn run_next_task() {
     TASK_MANAGER.run_next_task();
 }
@@ -184,6 +188,22 @@ fn mark_current_suspended() {
 /// Change the status of current `Running` task into `Exited`.
 fn mark_current_exited() {
     TASK_MANAGER.mark_current_exited();
+}
+
+/// return trace stat
+pub fn get_trace_stat(id:u8) -> isize {
+    let inner = TASK_MANAGER.inner.exclusive_access();
+    let current_task = inner.current_task;
+    inner.syscalls[current_task][id as usize]
+}
+
+/// record the count of syscall with parameter `id` and return
+pub fn trace_request_stat(id:u8) -> isize {
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let current_task = inner.current_task;
+    let c = &mut inner.syscalls[current_task][id as usize];
+    *c += 1;
+    *c
 }
 
 /// Suspend the current 'Running' task and run the next task in task list.
