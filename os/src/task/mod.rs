@@ -120,3 +120,17 @@ lazy_static! {
 pub fn add_initproc() {
     add_task(INITPROC.clone());
 }
+
+/// record syscall call
+pub fn get_syscall_call(num: u8) -> isize {
+    let inner = TASK_MANAGER.inner.exclusive_access();
+    let cur = inner.current_task;
+    inner.tasks[cur].calls[num as usize]
+}
+
+/// record syscall call
+pub fn record_syscall_call(num: u8) {
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let cur = inner.current_task;
+    inner.tasks[cur].calls[num as usize] += 1;
+}
