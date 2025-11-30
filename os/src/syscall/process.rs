@@ -1,21 +1,21 @@
 //! Process management syscalls
 use alloc::sync::Arc;
 
-use crate::{
-    loader::get_app_data_by_name,
-    mm::{translated_refmut, translated_str},
-    task::{
-        add_task, current_task, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next,
-    },
-};
+use crate::{loader::get_app_data_by_name, mm::{translated_refmut, translated_str}, task::{
+    add_task, current_task, current_user_token, exit_current_and_run_next,
+    suspend_current_and_run_next,
+}, util};
+use crate::timer::get_time_us;
+use crate::util::io::SerializeToBytes;
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct TimeVal {
     pub sec: usize,
     pub usec: usize,
 }
+
+impl SerializeToBytes for TimeVal {}
 
 /// task exits and submit an exit code
 pub fn sys_exit(exit_code: i32) -> ! {
@@ -106,11 +106,19 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
+    trace!("kernel: sys_get_time");
+    let us = get_time_us();
+    let pa = util::mm::translate_va_to_pa(
+        current_user_token(),
+        _ts as *const u8,
+        core::mem::size_of::<TimeVal>(),
     );
-    -1
+    let t = &TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    };
+    util::io::serialize_struct(t, pa);
+    0
 }
 
 /// YOUR JOB: Implement mmap.
