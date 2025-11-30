@@ -1,3 +1,7 @@
+//! Process management syscalls
+//!
+use alloc::sync::Arc;
+
 use crate::{
     fs::{open_file, OpenFlags},
     mm::{translated_ref, translated_refmut, translated_str},
@@ -9,7 +13,7 @@ use crate::{
 use alloc::{string::String, sync::Arc, vec::Vec};
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct TimeVal {
     pub sec: usize,
     pub usec: usize,
@@ -18,6 +22,9 @@ pub struct TimeVal {
 /// exit syscall
 ///
 /// exit the current task and run the next task in task list
+impl SerializeToBytes for TimeVal {}
+
+/// task exits and submit an exit code
 pub fn sys_exit(exit_code: i32) -> ! {
     trace!(
         "kernel:pid[{}] sys_exit",
@@ -152,11 +159,19 @@ pub fn sys_kill(pid: usize, signal: u32) -> isize {
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
-        current_task().unwrap().process.upgrade().unwrap().getpid()
+    trace!("kernel: sys_get_time");
+    let us = get_time_us();
+    let pa = util::mm::translate_va_to_pa(
+        current_user_token(),
+        _ts as *const u8,
+        core::mem::size_of::<TimeVal>(),
     );
-    -1
+    let t = &TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    };
+    util::io::serialize_struct(t, pa);
+    0
 }
 
 /// mmap syscall
