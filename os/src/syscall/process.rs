@@ -1,12 +1,20 @@
 //! Process management syscalls
-use crate::task::{change_program_brk, exit_current_and_run_next, suspend_current_and_run_next};
+
+use crate::task::{
+    change_program_brk, current_user_token, exit_current_and_run_next, suspend_current_and_run_next,
+};
+use crate::timer::get_time_us;
+use crate::util;
+use crate::util::io::SerializeToBytes;
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct TimeVal {
     pub sec: usize,
     pub usec: usize,
 }
+
+impl SerializeToBytes for TimeVal {}
 
 /// task exits and submit an exit code
 pub fn sys_exit(_exit_code: i32) -> ! {
@@ -24,10 +32,21 @@ pub fn sys_yield() -> isize {
 
 /// YOUR JOB: get time with second and microsecond
 /// HINT: You might reimplement it with virtual memory management.
-/// HINT: What if [`TimeVal`] is splitted by two pages ?
+/// HINT: What if [`TimeVal`] is split by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
-    -1
+    let us = get_time_us();
+    let pa = util::mm::translate_va_to_pa(
+        current_user_token(),
+        _ts as *const u8,
+        core::mem::size_of::<TimeVal>(),
+    );
+    let t = &TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    };
+    util::io::serialize_struct(t, pa);
+    0
 }
 
 /// TODO: Finish sys_trace to pass testcases
