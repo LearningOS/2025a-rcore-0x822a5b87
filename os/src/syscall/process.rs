@@ -95,8 +95,9 @@ pub fn sys_exit(exit_code: i32) -> ! {
     panic!("Unreachable in sys_exit!");
 }
 
+/// current task gives up resources for other tasks
 pub fn sys_yield() -> isize {
-    //trace!("kernel: sys_yield");
+    trace!("kernel:pid[{}] sys_yield", current_task().unwrap().pid.0);
     suspend_current_and_run_next();
     0
 }
@@ -222,6 +223,43 @@ pub fn sys_mmap(start: usize, len: usize, prot: usize) -> isize {
             -1
         }
     }
+/// YOUR JOB: Implement mmap.
+pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
+    let len = core::mem::size_of::<u8>();
+    let data = data as u8;
+    match trace_request {
+        0 => {
+            let r: Result<u8, &str> = read(current_user_token(), id as *const u8, len);
+            match r {
+                Ok(v) => v as isize,
+                _ => -1,
+            }
+        }
+        1 => {
+            let r = write(&data, current_user_token(), id as *const u8, len);
+            match r {
+                Ok(_) => 0,
+                _ => -1,
+            }
+        }
+        2 => get_syscall_call(id as u8),
+        _ => {
+            trace!(
+                "kernel: sys_trace with unknown trace_request {}",
+                trace_request
+            );
+            -1
+        }
+    }
+}
+
+// YOUR JOB: Implement mmap.
+pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
+    trace!(
+        "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
+        current_task().unwrap().pid.0
+    );
+    -1
 }
 
 pub fn sys_munmap(start: usize, len: usize) -> isize {
