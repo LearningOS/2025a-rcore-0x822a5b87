@@ -68,6 +68,9 @@ pub struct TaskControlBlockInner {
 
     /// Program break
     pub program_brk: usize,
+
+    /// save the call counts of each syscall
+    pub calls: [isize; u8::MAX as usize],
 }
 
 impl TaskControlBlockInner {
@@ -118,6 +121,7 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: user_sp,
                     program_brk: user_sp,
+                    calls: [0; u8::MAX as usize],
                 })
             },
         };
@@ -191,6 +195,7 @@ impl TaskControlBlock {
                     exit_code: 0,
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
+                    calls: [0; u8::MAX as usize],
                 })
             },
         });
