@@ -1,7 +1,5 @@
 //! Process management syscalls
 //!
-use alloc::sync::Arc;
-
 use crate::{
     fs::{open_file, OpenFlags},
     mm::{translated_ref, translated_refmut, translated_str},
@@ -65,8 +63,8 @@ pub fn sys_fork() -> isize {
     trap_cx.x[10] = 0;
     new_pid as isize
 }
-/// exec syscall
-pub fn sys_exec(path: *const u8, mut args: *const usize) -> isize {
+
+pub fn sys_exec(path: *const u8) -> isize {
     trace!(
         "kernel:pid[{}] sys_exec",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -170,28 +168,56 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
         sec: us / 1_000_000,
         usec: us % 1_000_000,
     };
-    util::io::serialize_struct(t, pa);
+    let _ = util::io::serialize_struct(t, pa);
     0
 }
 
 /// mmap syscall
 ///
 /// YOUR JOB: Implement mmap.
+pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
+    let len = core::mem::size_of::<u8>();
+    let data = data as u8;
+    match trace_request {
+        0 => {
+            let r: Result<u8, &str> = read(current_user_token(), id as *const u8, len);
+            match r {
+                Ok(v) => v as isize,
+                _ => -1,
+            }
+        }
+        1 => {
+            let r = write(&data, current_user_token(), id as *const u8, len);
+            match r {
+                Ok(_) => 0,
+                _ => -1,
+            }
+        }
+        2 => get_syscall_call(id as u8),
+        _ => {
+            trace!(
+                "kernel: sys_trace with unknown trace_request {}",
+                trace_request
+            );
+            -1
+        }
+    }
+}
+
+// YOUR JOB: Implement mmap.
 pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     trace!(
         "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
-        current_task().unwrap().process.upgrade().unwrap().getpid()
+        current_task().unwrap().pid.0
     );
     -1
 }
 
-/// munmap syscall
-///
 /// YOUR JOB: Implement munmap.
 pub fn sys_munmap(_start: usize, _len: usize) -> isize {
     trace!(
         "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
-        current_task().unwrap().process.upgrade().unwrap().getpid()
+        current_task().unwrap().pid.0
     );
     -1
 }
