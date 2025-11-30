@@ -1,11 +1,12 @@
 //! Process management syscalls
 
 use crate::task::{
-    change_program_brk, current_user_token, exit_current_and_run_next, suspend_current_and_run_next,
+    change_program_brk, current_user_token, exit_current_and_run_next, get_syscall_call,
+    suspend_current_and_run_next,
 };
 use crate::timer::get_time_us;
 use crate::util;
-use crate::util::io::SerializeToBytes;
+use crate::util::io::{read, write, SerializeToBytes};
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
@@ -30,9 +31,6 @@ pub fn sys_yield() -> isize {
     0
 }
 
-/// YOUR JOB: get time with second and microsecond
-/// HINT: You might reimplement it with virtual memory management.
-/// HINT: What if [`TimeVal`] is split by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
     let us = get_time_us();
@@ -45,15 +43,37 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
         sec: us / 1_000_000,
         usec: us % 1_000_000,
     };
-    util::io::serialize_struct(t, pa);
+    let _ = util::io::serialize_struct(t, pa);
     0
 }
 
-/// TODO: Finish sys_trace to pass testcases
-/// HINT: You might reimplement it with virtual memory management.
-pub fn sys_trace(_trace_request: usize, _id: usize, _data: usize) -> isize {
-    trace!("kernel: sys_trace");
-    -1
+pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
+    let len = core::mem::size_of::<u8>();
+    let data = data as u8;
+    match trace_request {
+        0 => {
+            let r: Result<u8, &str> = read(current_user_token(), id as *const u8, len);
+            match r {
+                Ok(v) => v as isize,
+                _ => -1,
+            }
+        }
+        1 => {
+            let r = write(&data, current_user_token(), id as *const u8, len);
+            match r {
+                Ok(_) => 0,
+                _ => -1,
+            }
+        }
+        2 => get_syscall_call(id as u8),
+        _ => {
+            trace!(
+                "kernel: sys_trace with unknown trace_request {}",
+                trace_request
+            );
+            -1
+        }
+    }
 }
 
 // YOUR JOB: Implement mmap.

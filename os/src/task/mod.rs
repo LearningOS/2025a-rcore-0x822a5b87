@@ -202,3 +202,17 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
 }
+
+/// record syscall call
+pub fn get_syscall_call(num: u8) -> isize {
+    let inner = TASK_MANAGER.inner.exclusive_access();
+    let cur = inner.current_task;
+    inner.tasks[cur].calls[num as usize]
+}
+
+/// record syscall call
+pub fn record_syscall_call(num: u8) {
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let cur = inner.current_task;
+    inner.tasks[cur].calls[num as usize] += 1;
+}

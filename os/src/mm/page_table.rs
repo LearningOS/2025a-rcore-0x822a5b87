@@ -14,7 +14,7 @@ bitflags! {
         const R = 1 << 1;
         /// Writable
         const W = 1 << 2;
-        /// eXecutable
+        /// executable
         const X = 1 << 3;
         /// User
         const U = 1 << 4;
