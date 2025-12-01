@@ -17,11 +17,13 @@ mod task;
 use crate::loader::{get_app_data, get_num_app};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
+use alloc::string::String;
 use alloc::vec::Vec;
 use lazy_static::*;
 use switch::__switch;
 pub use task::{TaskControlBlock, TaskStatus};
 
+use crate::mm::{MapPermission, VirtAddr};
 pub use context::TaskContext;
 
 /// The task manager, where all the tasks are managed.
@@ -215,4 +217,30 @@ pub fn record_syscall_call(num: u8) {
     let mut inner = TASK_MANAGER.inner.exclusive_access();
     let cur = inner.current_task;
     inner.tasks[cur].calls[num as usize] += 1;
+}
+
+/// mmap
+pub fn mmap(
+    start_va: VirtAddr,
+    end_va: VirtAddr,
+    map_perm: MapPermission,
+) -> Result<(), String> {
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let cur = inner.current_task;
+    inner.tasks[cur]
+        .memory_set
+        .insert_mapped_area(start_va, end_va, map_perm)
+}
+
+/// munmap
+pub fn munmap(
+    start_va: VirtAddr,
+    end_va: VirtAddr,
+    map_perm: MapPermission,
+) -> Result<(), String> {
+    let mut inner = TASK_MANAGER.inner.exclusive_access();
+    let cur = inner.current_task;
+    inner.tasks[cur]
+        .memory_set
+        .delete_mapped_area(start_va, end_va, map_perm)
 }
