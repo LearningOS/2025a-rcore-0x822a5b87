@@ -248,6 +248,29 @@ pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
                 "kernel: sys_trace with unknown trace_request {}",
                 trace_request
             );
+/// `sys_mmap` will allocate a range of physical pages and map them to a given virtual address range.
+pub fn sys_mmap(start: usize, len: usize, prot: usize) -> isize {
+    let len = ceil(len);
+
+    let prot_result = MMapProt::try_from(prot);
+    if prot_result.is_err() {
+        trace!("[kernel]: sys_mmap with malformed prot {}", prot);
+        return -1;
+    }
+    let prot = prot_result.unwrap();
+    let map_perm: Result<MapPermission, MMapProtError> = prot.try_into();
+    if map_perm.is_err() {
+        trace!("[kernel]: sys_mmap with invalid prot bits {}", prot.bits);
+        return -1;
+    }
+
+    let map_perm = map_perm.unwrap();
+
+    let ret = mmap(start as *const u8, len, map_perm);
+    match ret {
+        Ok(_) => 0,
+        Err(e) => {
+            trace!("[kernel]: sys_mmap failed: {}", e);
             -1
         }
     }
@@ -262,6 +285,16 @@ pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
     -1
 }
 
+pub fn sys_munmap(start: usize, len: usize) -> isize {
+    let len = ceil(len);
+    let ret = unmap(start as *const u8, len);
+    match ret {
+        Ok(_) => 0,
+        Err(e) => {
+            trace!("[kernel]: sys_munmap failed: {}", e);
+            -1
+        }
+    }
 pub fn sys_munmap(start: usize, len: usize) -> isize {
     let len = ceil(len);
     let ret = unmap(start as *const u8, len);

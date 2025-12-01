@@ -186,6 +186,18 @@ impl MemorySet {
         info!("[new_kernel].rodata [{:#x}, {:#x})", srodata as usize, erodata as usize);
         info!("[new_kernel].data [{:#x}, {:#x})", sdata as usize, edata as usize);
         info!(
+            "[new_kernel].text [{:#x}, {:#x})",
+            stext as usize, etext as usize
+        );
+        info!(
+            "[new_kernel].rodata [{:#x}, {:#x})",
+            srodata as usize, erodata as usize
+        );
+        info!(
+            "[new_kernel].data [{:#x}, {:#x})",
+            sdata as usize, edata as usize
+        );
+        info!(
             "[new_kernel].rodata [{:#x}, {:#x})",
             srodata as usize, erodata as usize
         );

@@ -98,8 +98,9 @@ pub fn read<S>(token: usize, ptr: *const u8, len: usize) -> Result<S, &'static s
 where
     S: SerializeToBytes,
 {
-    let flags = PTEFlags::V | PTEFlags::A | PTEFlags::R;
+    let flags = PTEFlags::V | PTEFlags::R | PTEFlags::U;
     let auth = auth_check(token, ptr, len, flags);
+
     if !auth {
         Err("unauthorized access")
     } else {
@@ -118,6 +119,7 @@ where
     }
 }
 
+#[allow(unused)]
 /// write `S` to physical address range
 pub fn write<S>(s: &S, token: usize, ptr: *const u8, len: usize) -> Result<usize, &'static str>
 where

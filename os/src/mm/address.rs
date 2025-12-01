@@ -246,8 +246,7 @@ impl StepByOne for PhysPageNum {
     }
 }
 
-#[derive(Copy, Clone)]
-/// a simple range structure for type T
+#[derive(Copy, Clone)] /// a simple range structure for type T
 pub struct SimpleRange<T>
 where
     T: StepByOne + Ord + Copy + PartialEq + PartialOrd + Debug,

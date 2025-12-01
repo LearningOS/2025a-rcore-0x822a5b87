@@ -129,6 +129,11 @@ pub fn translate_entries(token: usize, ptr: *const u8, len: usize) -> Vec<PageTa
 /// Check whether a virtual address range has the required permissions
 pub fn auth_check(token: usize, ptr: *const u8, len: usize, auth_flags: PTEFlags) -> bool {
     let pte_list = translate_entries(token, ptr, len);
+
+    if pte_list.is_empty() {
+        return false;
+    }
+
     for pte in pte_list {
         if pte.flags() & auth_flags != auth_flags {
             return false;
@@ -138,6 +143,7 @@ pub fn auth_check(token: usize, ptr: *const u8, len: usize, auth_flags: PTEFlags
 }
 
 /// Get all entries of a virtual address range
+#[allow(unused)]
 pub fn translate_entries(token: usize, ptr: *const u8, len: usize) -> Vec<PageTableEntry> {
     let mut v = Vec::new();
     let page_table = PageTable::from_token(token);
@@ -147,7 +153,12 @@ pub fn translate_entries(token: usize, ptr: *const u8, len: usize) -> Vec<PageTa
     while start < end {
         let start_va = VirtAddr::from(start);
         let mut vpn = VirtPageNum::from(start_va.floor());
-        let pte = page_table.translate(vpn).unwrap();
+        let pte = page_table.translate(vpn);
+        if pte.is_none() {
+            error!("error translating va {:x}, vpn = {:x}", start, vpn.0);
+            return Vec::new();
+        }
+        let pte = pte.unwrap();
         v.push(pte);
         vpn.step();
         let end_va = VirtAddr::from(end.min(VirtAddr::from(vpn).into()));
