@@ -6,6 +6,7 @@ use super::{StepByOne, VPNRange};
 use crate::config::{MEMORY_END, MMIO, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT_BASE, USER_STACK_SIZE};
 use crate::sync::UPSafeCell;
 use alloc::collections::BTreeMap;
+use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::arch::asm;
@@ -40,6 +41,7 @@ pub fn kernel_token() -> usize {
 pub struct MemorySet {
     page_table: PageTable,
     areas: Vec<MapArea>,
+    map_areas: BTreeMap<VPNRange, MapArea>,
 }
 
 impl MemorySet {
@@ -48,6 +50,7 @@ impl MemorySet {
         Self {
             page_table: PageTable::new(),
             areas: Vec::new(),
+            map_areas: BTreeMap::new(),
         }
     }
     /// Get the page table token
@@ -81,6 +84,72 @@ impl MemorySet {
     /// Add a new MapArea into this MemorySet.
     /// Assuming that there are no conflicts in the virtual address
     /// space.
+    /// insert_mapped_area
+    pub fn insert_mapped_area(
+        &mut self,
+        start_va: VirtAddr,
+        end_va: VirtAddr,
+        permission: MapPermission,
+    ) -> Result<(), String> {
+        let map_area = MapArea::new(start_va, end_va, MapType::Framed, permission);
+        if let Some(v) = self.intersect_map_area(&map_area) {
+            trace!(
+                "[MemorySet]: intersected with existing area: l = {:?}, r = {:?}",
+                map_area.vpn_range,
+                v.vpn_range
+            );
+            return Err(String::from(
+                "[MemorySet]: insert_mapped_area failed due to intersecting with existing area",
+            ));
+        }
+        self.mmap(map_area);
+        Ok(())
+    }
+    /// delete_mapped_area
+    pub fn delete_mapped_area(
+        &mut self,
+        start_va: VirtAddr,
+        end_va: VirtAddr,
+        permission: MapPermission,
+    ) -> Result<(), String> {
+        let map_area = MapArea::new(start_va, end_va, MapType::Framed, permission);
+        if let None = self.intersect_map_area(&map_area) {
+            return Err(String::from(
+                "[MemorySet]: no existing map area has been found!",
+            ));
+        }
+        self.unmap(map_area)
+    }
+    fn intersect_map_area(&self, map_area: &MapArea) -> Option<&MapArea> {
+        for (vpn_range, area) in self.map_areas.iter() {
+            if map_area.vpn_range.intersect(*vpn_range) {
+                return Some(area);
+            }
+        }
+        None
+    }
+
+    /// `mmap` map a `MapArea` to the page table
+    pub fn mmap(&mut self, mut map_area: MapArea) {
+        map_area.map(&mut self.page_table);
+        self.map_areas.insert(map_area.vpn_range, map_area);
+    }
+
+    /// `unmap` unmap a `MapArea` to the page table
+    pub fn unmap(&mut self, mut map_area: MapArea) -> Result<(), String> {
+        for vpn in map_area.vpn_range {
+            let pte = self.translate(vpn);
+            if pte.is_none() || !pte.unwrap().is_valid() {
+                return Err(String::from(
+                    "[MemorySet]: unmap failed due to unmapped vpn",
+                ));
+            }
+        }
+        map_area.unmap(&mut self.page_table);
+        self.map_areas.remove(&map_area.vpn_range);
+        Ok(())
+    }
+
     /// 1. Map a `MapArea` to the page table.
     /// 2. If any input files are provided, copy the data from the input files into the newly initialized `MapArea`.
     /// 3. Push MapArea into `MemorySet`
@@ -106,9 +175,18 @@ impl MemorySet {
         // map trampoline
         memory_set.map_trampoline();
         // map kernel sections
-        info!("[new_kernel].text [{:#x}, {:#x})", stext as usize, etext as usize);
-        info!("[new_kernel].rodata [{:#x}, {:#x})", srodata as usize, erodata as usize);
-        info!("[new_kernel].data [{:#x}, {:#x})", sdata as usize, edata as usize);
+        info!(
+            "[new_kernel].text [{:#x}, {:#x})",
+            stext as usize, etext as usize
+        );
+        info!(
+            "[new_kernel].rodata [{:#x}, {:#x})",
+            srodata as usize, erodata as usize
+        );
+        info!(
+            "[new_kernel].data [{:#x}, {:#x})",
+            sdata as usize, edata as usize
+        );
         info!(
             "[new_kernel].bss [{:#x}, {:#x})",
             sbss_with_stack as usize, ebss as usize
@@ -210,7 +288,7 @@ impl MemorySet {
         );
     }
 
-    fn map_lower_addr(memory_set: &mut MemorySet, elf: & xmas_elf::ElfFile) -> usize {
+    fn map_lower_addr(memory_set: &mut MemorySet, elf: &xmas_elf::ElfFile) -> usize {
         // map .text/.rodata/... from elf
         let max_end_vpn = Self::map_elf(memory_set, &elf);
 
@@ -264,7 +342,7 @@ impl MemorySet {
         memory_set
     }
 
-    fn map_elf(memory_set: &mut MemorySet, elf: & xmas_elf::ElfFile) -> VirtPageNum {
+    fn map_elf(memory_set: &mut MemorySet, elf: &xmas_elf::ElfFile) -> VirtPageNum {
         let elf_header = elf.header;
         let magic = elf_header.pt1.magic;
         assert_eq!(magic, [0x7f, 0x45, 0x4c, 0x46], "invalid elf!");
