@@ -1,14 +1,14 @@
 //! Process management syscalls
-use alloc::sync::Arc;
-
-use crate::{loader::get_app_data_by_name, mm::{translated_refmut, translated_str}, task::{
-    add_task, current_task, current_user_token, exit_current_and_run_next,
-    suspend_current_and_run_next,
-}, util};
+use crate::loader::get_app_data_by_name;
+use crate::mm::{translated_refmut, translated_str, MapPermission};
+use crate::task::{
+    add_task, current_task, current_user_token, exit_current_and_run_next, suspend_current_and_run_next,
+};
 use crate::timer::get_time_us;
-use crate::util::io::SerializeToBytes;
 use crate::util;
-use crate::util::io::{read, write, SerializeToBytes};
+use crate::util::io::{SerializeToBytes};
+use crate::util::mm::{ceil, mmap, unmap};
+use alloc::sync::Arc;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
@@ -18,6 +18,65 @@ pub struct TimeVal {
 }
 
 impl SerializeToBytes for TimeVal {}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MMapProtError {
+    InvalidBits(usize),
+}
+
+bitflags! {
+    /// map permission flags for mmap
+    pub struct MMapProt: u8 {
+        /// Readable
+        const R = 1 << 0;
+        /// Writable
+        const W = 1 << 1;
+        /// Executable
+        const X = 1 << 2;
+    }
+}
+
+impl TryInto<MapPermission> for MMapProt {
+    type Error = MMapProtError;
+
+    fn try_into(self) -> Result<MapPermission, Self::Error> {
+        let mut perm = MapPermission::empty();
+        if self.contains(MMapProt::R) {
+            perm |= MapPermission::R;
+        }
+        if self.contains(MMapProt::W) {
+            perm |= MapPermission::W;
+        }
+        if self.contains(MMapProt::X) {
+            perm |= MapPermission::X;
+        }
+
+        perm |= MapPermission::U;
+
+        Ok(perm)
+    }
+}
+
+/// try to parse MMapProt from usize
+impl TryFrom<usize> for MMapProt {
+    type Error = MMapProtError;
+
+    /// implementation of try_from
+    fn try_from(val: usize) -> Result<Self, Self::Error> {
+        if val == 0 {
+            return Err(MMapProtError::InvalidBits(val));
+        }
+
+        const MASK: usize = 0x7;
+        if (val & !MASK) != 0 {
+            return Err(MMapProtError::InvalidBits(val));
+        }
+
+        Ok(Self {
+            bits: (val & MASK) as u8,
+        })
+    }
+}
 
 /// task exits and submit an exit code
 pub fn sys_exit(exit_code: i32) -> ! {
@@ -67,9 +126,13 @@ pub fn sys_exec(path: *const u8) -> isize {
 }
 
 /// If there is not a child process whose pid is same as given, return -1.
-/// Else if there is a child process but it is still running, return -2.
+/// Else if there is a child process, but it is still running, return -2.
 pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
-    trace!("kernel::pid[{}] sys_waitpid [{}]", current_task().unwrap().pid.0, pid);
+    trace!(
+        "kernel::pid[{}] sys_waitpid [{}]",
+        current_task().unwrap().pid.0,
+        pid
+    );
     let task = current_task().unwrap();
     // find a child process
 
@@ -106,7 +169,7 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
 
 /// YOUR JOB: get time with second and microsecond
 /// HINT: You might reimplement it with virtual memory management.
-/// HINT: What if [`TimeVal`] is splitted by two pages ?
+/// HINT: What if [`TimeVal`] is split by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
     let us = get_time_us();
@@ -123,52 +186,44 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     0
 }
 
-/// YOUR JOB: Implement mmap.
-pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
-    let len = core::mem::size_of::<u8>();
-    let data = data as u8;
-    match trace_request {
-        0 => {
-            let r: Result<u8, &str> = read(current_user_token(), id as *const u8, len);
-            match r {
-                Ok(v) => v as isize,
-                _ => -1,
-            }
-        }
-        1 => {
-            let r = write(&data, current_user_token(), id as *const u8, len);
-            match r {
-                Ok(_) => 0,
-                _ => -1,
-            }
-        }
-        2 => get_syscall_call(id as u8),
-        _ => {
-            trace!(
-                "kernel: sys_trace with unknown trace_request {}",
-                trace_request
-            );
+/// `sys_mmap` will allocate a range of physical pages and map them to a given virtual address range.
+pub fn sys_mmap(start: usize, len: usize, prot: usize) -> isize {
+    let len = ceil(len);
+
+    let prot_result = MMapProt::try_from(prot);
+    if prot_result.is_err() {
+        trace!("[kernel]: sys_mmap with malformed prot {}", prot);
+        return -1;
+    }
+    let prot = prot_result.unwrap();
+    let map_perm: Result<MapPermission, MMapProtError> = prot.try_into();
+    if map_perm.is_err() {
+        trace!("[kernel]: sys_mmap with invalid prot bits {}", prot.bits);
+        return -1;
+    }
+
+    let map_perm = map_perm.unwrap();
+
+    let ret = mmap(start as *const u8, len, map_perm);
+    match ret {
+        Ok(_) => 0,
+        Err(e) => {
+            trace!("[kernel]: sys_mmap failed: {}", e);
             -1
         }
     }
 }
 
-// YOUR JOB: Implement mmap.
-pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
-}
-
-/// YOUR JOB: Implement munmap.
-pub fn sys_munmap(_start: usize, _len: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_munmap NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+pub fn sys_munmap(start: usize, len: usize) -> isize {
+    let len = ceil(len);
+    let ret = unmap(start as *const u8, len);
+    match ret {
+        Ok(_) => 0,
+        Err(e) => {
+            trace!("[kernel]: sys_munmap failed: {}", e);
+            -1
+        }
+    }
 }
 
 /// change data segment size
