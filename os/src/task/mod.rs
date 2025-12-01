@@ -207,14 +207,31 @@ pub fn remove_inactive_task(task: Arc<TaskControlBlock>) {
 
 /// record syscall call
 pub fn get_syscall_call(num: u8) -> isize {
-    let inner = TASK_MANAGER.inner.exclusive_access();
-    let cur = inner.current_task;
-    inner.tasks[cur].calls[num as usize]
+    let task = current_task().unwrap();
+    let task_ref = task.inner_exclusive_access();
+    task_ref.calls[num as usize]
 }
 
 /// record syscall call
 pub fn record_syscall_call(num: u8) {
-    let mut inner = TASK_MANAGER.inner.exclusive_access();
-    let cur = inner.current_task;
-    inner.tasks[cur].calls[num as usize] += 1;
+    let task = current_task().unwrap();
+    task.inner_exclusive_access().calls[num as usize] += 1;
+}
+
+/// mmap
+pub fn mmap(start_va: VirtAddr, end_va: VirtAddr, map_perm: MapPermission) -> Result<(), String> {
+    let task = take_current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+    inner
+        .memory_set
+        .insert_mapped_area(start_va, end_va, map_perm)
+}
+
+/// munmap
+pub fn munmap(start_va: VirtAddr, end_va: VirtAddr, map_perm: MapPermission) -> Result<(), String> {
+    let task = take_current_task().unwrap();
+    let mut inner = task.inner_exclusive_access();
+    inner
+        .memory_set
+        .delete_mapped_area(start_va, end_va, map_perm)
 }

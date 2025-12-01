@@ -1,9 +1,16 @@
 //! PhysAddr, VirtAddr, PhysPageNum, VirtPageNum, raw address
 
+//! Implementation of physical and virtual address and page number.
+
 use super::PageTableEntry;
 use crate::config::{PAGE_SIZE, PAGE_SIZE_BITS};
+use alloc::format;
+use alloc::string::String;
+use core::cmp::Ordering;
 use core::fmt::{self, Debug, Formatter};
+use core::ops::Add;
 
+/// physical address
 const PA_WIDTH_SV39: usize = 56;
 const VA_WIDTH_SV39: usize = 39;
 const PPN_WIDTH_SV39: usize = PA_WIDTH_SV39 - PAGE_SIZE_BITS;
@@ -121,6 +128,16 @@ impl VirtAddr {
     pub fn aligned(&self) -> bool {
         self.page_offset() == 0
     }
+
+    /// Create a new aligned virtual address, or return an error
+    pub fn new_aligned_va(addr: usize) -> Result<VirtAddr, String> {
+        let va = VirtAddr::from(addr);
+        if va.aligned() {
+            Ok(va)
+        } else {
+            Err(format!("address is not aligned: 0x{:x}", addr))
+        }
+    }
 }
 impl From<VirtAddr> for VirtPageNum {
     fn from(v: VirtAddr) -> Self {
@@ -133,6 +150,15 @@ impl From<VirtPageNum> for VirtAddr {
         Self(v.0 << PAGE_SIZE_BITS)
     }
 }
+
+impl Add<VirtAddr> for VirtAddr {
+    type Output = Self;
+
+    fn add(self, rhs: VirtAddr) -> Self::Output {
+        VirtAddr(self.0 + rhs.0)
+    }
+}
+
 impl PhysAddr {
     /// Get the (floor) physical page number
     pub fn floor(&self) -> PhysPageNum {
@@ -223,14 +249,14 @@ impl StepByOne for PhysPageNum {
 #[derive(Copy, Clone)]
 pub struct SimpleRange<T>
 where
-    T: StepByOne + Copy + PartialEq + PartialOrd + Debug,
+    T: StepByOne + Ord + Copy + PartialEq + PartialOrd + Debug,
 {
     l: T,
     r: T,
 }
 impl<T> SimpleRange<T>
 where
-    T: StepByOne + Copy + PartialEq + PartialOrd + Debug,
+    T: StepByOne + Ord + Copy + PartialEq + PartialOrd + Debug,
 {
     pub fn new(start: T, end: T) -> Self {
         assert!(start <= end, "start {:?} > end {:?}!", start, end);
@@ -242,10 +268,53 @@ where
     pub fn get_end(&self) -> T {
         self.r
     }
+    pub fn intersect(&self, other: SimpleRange<T>) -> bool {
+        !(other.l >= self.r || other.r <= self.l)
+    }
+}
+impl<T> PartialEq for SimpleRange<T>
+where
+    T: StepByOne + Ord + Copy + PartialEq + PartialOrd + Debug,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.l == other.l && self.r == other.r
+    }
+}
+impl<T> Debug for SimpleRange<T>
+where
+// 约束 T 必须实现 Debug（否则无法格式化 T 的值）
+    T: StepByOne + Ord + Copy + PartialEq + PartialOrd + Debug,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "[{:?}, {:?})", self.l, self.r)
+    }
+}
+impl<T> Eq for SimpleRange<T>
+where
+    T: StepByOne + Ord + Copy + PartialEq + PartialOrd + Debug,
+{}
+impl<T> PartialOrd for SimpleRange<T>
+where
+    T: StepByOne + Ord + Copy + PartialEq + PartialOrd + Debug,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl<T> Ord for SimpleRange<T>
+where
+    T: StepByOne + Ord + Copy + PartialEq + PartialOrd + Debug,
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.l.cmp(&other.l) {
+            Ordering::Less | Ordering::Greater => self.l.cmp(&other.l),
+            Ordering::Equal => self.r.cmp(&other.r),
+        }
+    }
 }
 impl<T> IntoIterator for SimpleRange<T>
 where
-    T: StepByOne + Copy + PartialEq + PartialOrd + Debug,
+    T: StepByOne + Ord + Copy + PartialEq + PartialOrd + Debug,
 {
     type Item = T;
     type IntoIter = SimpleRangeIterator<T>;
