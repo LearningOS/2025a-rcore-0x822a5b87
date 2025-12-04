@@ -155,14 +155,39 @@ impl MemorySet {
         );
         memory_set
     }
+
     /// Include sections in elf and trampoline and TrapContext and user stack,
     /// also returns user_sp_base and entry point.
     pub fn from_elf(elf_data: &[u8]) -> (Self, usize, usize) {
+        let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
         let mut memory_set = Self::new_bare();
+        Self::map_high(&mut memory_set);
+        let user_stack_top = Self::map_low(&elf, &mut memory_set);
+        (
+            memory_set,
+            user_stack_top,
+            elf.header.pt2.entry_point() as usize,
+        )
+    }
+
+    pub fn map_high(memory_set: &mut MemorySet) {
         // map trampoline
         memory_set.map_trampoline();
+
+        // map TrapContext
+        memory_set.push(
+            MapArea::new(
+                TRAP_CONTEXT_BASE.into(),
+                TRAMPOLINE.into(),
+                MapType::Framed,
+                MapPermission::R | MapPermission::W,
+            ),
+            None,
+        );
+    }
+
+    pub fn map_low(elf : &xmas_elf::ElfFile,memory_set: &mut MemorySet) -> usize {
         // map program headers of elf, with U flag
-        let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
         let elf_header = elf.header;
         let magic = elf_header.pt1.magic;
         assert_eq!(magic, [0x7f, 0x45, 0x4c, 0x46], "invalid elf!");
@@ -217,22 +242,10 @@ impl MemorySet {
             ),
             None,
         );
-        // map TrapContext
-        memory_set.push(
-            MapArea::new(
-                TRAP_CONTEXT_BASE.into(),
-                TRAMPOLINE.into(),
-                MapType::Framed,
-                MapPermission::R | MapPermission::W,
-            ),
-            None,
-        );
-        (
-            memory_set,
-            user_stack_top,
-            elf.header.pt2.entry_point() as usize,
-        )
+
+        user_stack_top
     }
+
     /// Create a new address space by copy code&data from a exited process's address space.
     pub fn from_existed_user(user_space: &Self) -> Self {
         let mut memory_set = Self::new_bare();
