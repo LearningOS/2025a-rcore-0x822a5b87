@@ -53,7 +53,7 @@ impl MemorySet {
             areas: Vec::new(),
         }
     }
-    /// Get he page table token
+    /// Get the page table token
     pub fn token(&self) -> usize {
         self.page_table.token()
     }
@@ -179,6 +179,7 @@ impl MemorySet {
         }
         memory_set
     }
+
     /// Include sections in elf and trampoline and TrapContext and user stack,
     /// also returns user_sp_base and entry point.
     pub fn from_elf(elf_data: &[u8]) -> (Self, usize, usize) {
@@ -226,6 +227,7 @@ impl MemorySet {
             elf.header.pt2.entry_point() as usize,
         )
     }
+
     /// Create a new address space by copy code&data from a exited process's address space.
     pub fn from_existed_user(user_space: &Self) -> Self {
         let mut memory_set = Self::new_bare();
@@ -396,6 +398,7 @@ impl MapArea {
 }
 
 #[derive(Copy, Clone, PartialEq, Debug)]
+/// map type for memory set: identical or framed
 pub enum MapType {
     Identical,
     Framed,
