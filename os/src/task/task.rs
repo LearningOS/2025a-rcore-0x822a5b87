@@ -1,7 +1,7 @@
 //! Types related to task management & Functions for completely changing TCB
 use super::{current_task, TaskContext};
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
-use crate::config::TRAP_CONTEXT_BASE;
+use crate::config::{BIG_STRIDE, TRAP_CONTEXT_BASE};
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
 use crate::sync::UPSafeCell;
 use crate::trap::{trap_handler, TrapContext};
@@ -71,6 +71,12 @@ pub struct TaskControlBlockInner {
 
     /// save the call counts of each syscall
     pub calls: [isize; u8::MAX as usize],
+
+    /// the priority of the task
+    pub prio: usize,
+
+    /// the pass of the task
+    pub pass: usize
 }
 
 impl TaskControlBlockInner {
@@ -87,6 +93,10 @@ impl TaskControlBlockInner {
     }
     pub fn is_zombie(&self) -> bool {
         self.get_status() == TaskStatus::Zombie
+    }
+    /// add stride to the task
+    pub fn add_stride(&mut self) {
+        self.pass += BIG_STRIDE / self.prio;
     }
 }
 
@@ -122,6 +132,8 @@ impl TaskControlBlock {
                     heap_bottom: user_sp,
                     program_brk: user_sp,
                     calls: [0; u8::MAX as usize],
+                    prio: 16,
+                    pass: 0,
                 })
             },
         };
@@ -196,6 +208,8 @@ impl TaskControlBlock {
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,
                     calls: [0; u8::MAX as usize],
+                    prio: 16,
+                    pass: 0,
                 })
             },
         });
@@ -240,6 +254,8 @@ impl TaskControlBlock {
                     heap_bottom: user_stack_top,
                     program_brk: user_stack_top,
                     calls: [0; u8::MAX as usize],
+                    prio: 16,
+                    pass: 0,
                 })
             }
         });
