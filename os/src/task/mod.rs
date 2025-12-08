@@ -139,7 +139,7 @@ pub fn record_syscall_call(num: u8) {
 
 /// mmap
 pub fn mmap(start_va: VirtAddr, end_va: VirtAddr, map_perm: MapPermission) -> Result<(), String> {
-    let task = take_current_task().unwrap();
+    let task = current_task().unwrap();
     let mut inner = task.inner_exclusive_access();
     inner
         .memory_set
@@ -148,7 +148,7 @@ pub fn mmap(start_va: VirtAddr, end_va: VirtAddr, map_perm: MapPermission) -> Re
 
 /// munmap
 pub fn munmap(start_va: VirtAddr, end_va: VirtAddr, map_perm: MapPermission) -> Result<(), String> {
-    let task = take_current_task().unwrap();
+    let task = current_task().unwrap();
     let mut inner = task.inner_exclusive_access();
     inner
         .memory_set
