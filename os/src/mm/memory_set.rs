@@ -87,8 +87,12 @@ impl MemorySet {
     /// Add a new MapArea into this MemorySet.
     /// Assuming that there are no conflicts in the virtual address
     /// space.
+    /// 1. Map a `MapArea` to the page table.
+    /// 2. If any input files are provided, copy the data from the input files into the newly initialized `MapArea`.
+    /// 3. Push MapArea into `MemorySet`
     fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
         map_area.map(&mut self.page_table);
+        // copy app data from files(such as an elf executable) if any input files is provided.
         if let Some(data) = data {
             map_area.copy_data(&mut self.page_table, data);
         }
@@ -108,11 +112,11 @@ impl MemorySet {
         // map trampoline
         memory_set.map_trampoline();
         // map kernel sections
-        info!(".text [{:#x}, {:#x})", stext as usize, etext as usize);
-        info!(".rodata [{:#x}, {:#x})", srodata as usize, erodata as usize);
-        info!(".data [{:#x}, {:#x})", sdata as usize, edata as usize);
+        info!("[new_kernel].text [{:#x}, {:#x})", stext as usize, etext as usize);
+        info!("[new_kernel].rodata [{:#x}, {:#x})", srodata as usize, erodata as usize);
+        info!("[new_kernel].data [{:#x}, {:#x})", sdata as usize, edata as usize);
         info!(
-            ".bss [{:#x}, {:#x})",
+            "[new_kernel].bss [{:#x}, {:#x})",
             sbss_with_stack as usize, ebss as usize
         );
         info!("mapping .text section");
@@ -228,7 +232,7 @@ impl MemorySet {
         )
     }
 
-    /// Create a new address space by copy code&data from a exited process's address space.
+    /// Create a new address space by copy code&data from an exited process's address space.
     pub fn from_existed_user(user_space: &Self) -> Self {
         let mut memory_set = Self::new_bare();
         // map trampoline
@@ -255,6 +259,7 @@ impl MemorySet {
             satp::write(satp);
             asm!("sfence.vma");
         }
+        info!("[kernel]: enable kernel space.")
     }
     /// Translate a virtual page number to a page table entry
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
@@ -328,6 +333,8 @@ impl MapArea {
             map_perm: another.map_perm,
         }
     }
+
+    /// Map a VPN to a PPN and record this mapping in the page table.
     pub fn map_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
         let ppn: PhysPageNum;
         match self.map_type {
@@ -376,6 +383,7 @@ impl MapArea {
     /// data: start-aligned but maybe with shorter length
     /// assume that all frames were cleared before
     pub fn copy_data(&mut self, page_table: &mut PageTable, data: &[u8]) {
+        // only `Framed` type is permissible
         assert_eq!(self.map_type, MapType::Framed);
         let mut start: usize = 0;
         let mut current_vpn = self.vpn_range.get_start();
@@ -411,7 +419,7 @@ bitflags! {
         const R = 1 << 1;
         ///Writable
         const W = 1 << 2;
-        ///Excutable
+        ///Executable
         const X = 1 << 3;
         ///Accessible in U mode
         const U = 1 << 4;
