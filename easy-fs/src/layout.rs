@@ -13,13 +13,21 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::fmt::{Debug, Formatter, Result};
 
+/// Magic number for sanity check
 const EFS_MAGIC: u32 = 0x3b800001;
-const INODE_DIRECT_COUNT: usize = 28;
+/// The max number of direct inodes
+const INODE_DIRECT_COUNT: usize = 27;
+/// The max length of inode name
 const NAME_LENGTH_LIMIT: usize = 27;
+/// The max number of indirect1 inodes
 const INODE_INDIRECT1_COUNT: usize = BLOCK_SZ / 4;
+/// The max number of indirect2 inodes
 const INODE_INDIRECT2_COUNT: usize = INODE_INDIRECT1_COUNT * INODE_INDIRECT1_COUNT;
+/// The upper bound of direct inode index
 const DIRECT_BOUND: usize = INODE_DIRECT_COUNT;
+/// The upper bound of indirect1 inode index
 const INDIRECT1_BOUND: usize = DIRECT_BOUND + INODE_INDIRECT1_COUNT;
+/// The upper bound of indirect2 inode indexs
 #[allow(unused)]
 const INDIRECT2_BOUND: usize = INDIRECT1_BOUND + INODE_INDIRECT2_COUNT;
 
@@ -86,12 +94,15 @@ pub enum DiskInodeType {
     Directory,
 }
 
+/// An indirect block
 type IndirectBlock = [u32; BLOCK_SZ / 4];
+/// A data block
 type DataBlock = [u8; BLOCK_SZ];
 
 /// Inode struct in disk
 #[repr(C)]
 pub struct DiskInode {
+    pub ref_count: u32,
     /// file size
     pub size: u32,
     /// array of direct block id
@@ -100,27 +111,41 @@ pub struct DiskInode {
     pub indirect1: u32,
     /// two-level indirect block id
     pub indirect2: u32,
-    /// inode type
-    type_: DiskInodeType,
+    inode_type: DiskInodeType,
 }
 
 impl DiskInode {
-    /// indirect1 and indirect2 block are allocated only when they are needed.
-    pub fn initialize(&mut self, type_: DiskInodeType) {
+    /// Initialize a disk inode, as well as all direct inodes under it
+    /// indirect1 and indirect2 block are allocated only when they are needed
+    pub fn initialize(&mut self, disk_inode_type: DiskInodeType) {
+        // It's noteworthy that ref_count is initialized to 0 rather than 1.
+        // This is because a reference is linked when a DirEntry is created.
+        self.ref_count = 1;
         self.size = 0;
         self.direct.iter_mut().for_each(|v| *v = 0);
         self.indirect1 = 0;
         self.indirect2 = 0;
-        self.type_ = type_;
+        self.inode_type = disk_inode_type;
     }
     /// inode is directory?
+    /// Whether this inode is a directory
     pub fn is_dir(&self) -> bool {
-        self.type_ == DiskInodeType::Directory
+        self.inode_type == DiskInodeType::Directory
     }
-    /// inode is file?
+    pub fn dir_count(&self) -> usize {
+        assert!(self.is_dir());
+        (self.size as usize) / DIRENT_SZ
+    }
+    pub fn deref(&mut self) {
+        self.ref_count -= 1;
+    }
+    pub fn empty(&self) -> bool {
+        self.ref_count == 0
+    }
+    /// Whether this inode is a file
     #[allow(unused)]
     pub fn is_file(&self) -> bool {
-        self.type_ == DiskInodeType::File
+        self.inode_type == DiskInodeType::File
     }
     /// Return block number correspond to size.
     pub fn data_blocks(&self) -> u32 {
@@ -146,7 +171,7 @@ impl DiskInode {
         }
         total as u32
     }
-    /// Number of blocks needed to extend.
+    /// Get the number of data blocks that have to be allocated given the new size of data
     pub fn blocks_num_needed(&self, new_size: u32) -> u32 {
         assert!(new_size >= self.size);
         Self::total_blocks(new_size) - Self::total_blocks(self.size)
@@ -251,7 +276,6 @@ impl DiskInode {
     }
 
     /// Clear size to zero and return blocks that should be deallocated.
-    ///
     /// We will clear the block contents to zero later.
     pub fn clear_size(&mut self, block_device: &Arc<dyn BlockDevice>) -> Vec<u32> {
         let mut v: Vec<u32> = Vec::new();
@@ -404,6 +428,7 @@ impl DiskInode {
     }
 }
 
+/// A directory entry
 #[repr(C)]
 /// Directory entry struct
 pub struct DirEntry {
@@ -413,6 +438,7 @@ pub struct DirEntry {
     inode_id: u32,
 }
 
+/// Size of a directory entry
 pub const DIRENT_SZ: usize = 32;
 
 impl DirEntry {
@@ -423,7 +449,7 @@ impl DirEntry {
             inode_id: 0,
         }
     }
-    /// Create a directory entry with name and inode number
+    /// Crate a directory entry from name and inode number
     pub fn new(name: &str, inode_id: u32) -> Self {
         let mut bytes = [0u8; NAME_LENGTH_LIMIT + 1];
         bytes[..name.len()].copy_from_slice(name.as_bytes());
@@ -448,5 +474,29 @@ impl DirEntry {
     /// get the inode id of the directory entry
     pub fn inode_id(&self) -> u32 {
         self.inode_id
+    }
+    pub fn is_valid(&self) -> bool {
+        self.inode_id != 0
+    }
+    #[allow(unused)]
+    pub fn mark_valid(&mut self) {
+        self.inode_id = 0
+    }
+    pub fn equal(&self, name: &str) -> bool {
+        self.is_valid() && self.name() == name
+    }
+}
+
+pub struct NodePos {
+    pub file_inode_id: u32,
+    pub dir_entry_index: usize,
+}
+
+impl NodePos {
+    pub fn new(file_inode_id: u32, dir_entry_index: usize) -> NodePos {
+        NodePos {
+            file_inode_id,
+            dir_entry_index,
+        }
     }
 }

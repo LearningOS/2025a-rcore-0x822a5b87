@@ -2,7 +2,6 @@
 
 use core::cmp::Ordering;
 
-use crate::config::CLOCK_FREQ;
 use crate::sbi::set_timer;
 use crate::sync::UPSafeCell;
 use crate::task::{current_task, wakeup_task, TaskControlBlock};
@@ -10,6 +9,8 @@ use alloc::collections::BinaryHeap;
 use alloc::sync::Arc;
 use lazy_static::*;
 use riscv::register::time;
+use crate::board::CLOCK_FREQ;
+
 /// The number of ticks per second
 const TICKS_PER_SEC: usize = 100;
 /// The number of milliseconds per second

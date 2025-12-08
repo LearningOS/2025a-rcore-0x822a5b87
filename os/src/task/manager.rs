@@ -1,5 +1,3 @@
-//! Implementation of [`TaskManager`]
-//!
 //! It is only used to manage processes and schedule process based on ready queue.
 //! Other CPU process monitoring functions are in Processor.
 
@@ -11,7 +9,7 @@ use lazy_static::*;
 ///An array of `TaskControlBlock` that is thread-safe
 pub struct TaskManager {
     ready_queue: VecDeque<Arc<TaskControlBlock>>,
-    
+
     /// The stopping task, leave a reference so that the kernel stack will not be recycled when switching tasks
     stop_task: Option<Arc<TaskControlBlock>>,
 }
@@ -31,8 +29,13 @@ impl TaskManager {
     }
     /// Take a process out of the ready queue
     pub fn fetch(&mut self) -> Option<Arc<TaskControlBlock>> {
-        self.ready_queue.pop_front()
+        let pcb = self.ready_queue.pop_front();
+        if let Some(ref task) = pcb {
+            task.inner_exclusive_access().add_stride();
+        }
+        pcb
     }
+    /// remove task from ready queue.
     pub fn remove(&mut self, task: Arc<TaskControlBlock>) {
         if let Some((id, _)) = self
             .ready_queue

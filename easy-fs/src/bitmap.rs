@@ -14,10 +14,10 @@ pub struct Bitmap {
 }
 
 /// Decompose bits into (block_pos, bits64_pos, inner_pos)
-fn decomposition(mut bit: usize) -> (usize, usize, usize) {
-    let block_pos = bit / BLOCK_BITS;
-    bit %= BLOCK_BITS;
-    (block_pos, bit / 64, bit % 64)
+fn decomposition(mut relative_offset_of_areas: usize) -> (usize, usize, usize) {
+    let block_pos = relative_offset_of_areas / BLOCK_BITS;
+    relative_offset_of_areas %= BLOCK_BITS;
+    (block_pos, relative_offset_of_areas / 64, relative_offset_of_areas % 64)
 }
 
 impl Bitmap {
@@ -57,6 +57,7 @@ impl Bitmap {
         None
     }
     /// Deallocate a block according to the bitmap info
+    /// relative_offset_of_areas -> inode_id/data_area_id
     pub fn dealloc(&self, block_device: &Arc<dyn BlockDevice>, bit: usize) {
         let (block_pos, bits64_pos, inner_pos) = decomposition(bit);
         get_block_cache(block_pos + self.start_block_id, Arc::clone(block_device))

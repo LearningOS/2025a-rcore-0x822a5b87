@@ -5,6 +5,9 @@
 .idea/*
 os/target/*
 os/.idea/*
+.idea
+Cargo.lock
+target
 os/src/link_app.S
 os/last-*
 os/Cargo.lock

@@ -7,6 +7,7 @@ use super::{
     block_cache_sync_all, get_block_cache, Bitmap, BlockDevice, DiskInode, DiskInodeType, Inode,
     SuperBlock,
 };
+use crate::layout::{DirEntry, DIRENT_SZ};
 use crate::BLOCK_SZ;
 use alloc::sync::Arc;
 use spin::Mutex;
@@ -27,6 +28,7 @@ pub struct EasyFileSystem {
 
 type DataBlock = [u8; BLOCK_SZ];
 
+/// An easy fs over a block device
 impl EasyFileSystem {
     /// Create a new EasyFileSystem
     pub fn create(
@@ -47,7 +49,6 @@ impl EasyFileSystem {
             (1 + inode_bitmap_blocks + inode_area_blocks) as usize,
             data_bitmap_blocks as usize,
         );
-        //
         let mut efs = Self {
             block_device: Arc::clone(&block_device),
             inode_bitmap,
@@ -79,13 +80,15 @@ impl EasyFileSystem {
             },
         );
         // write back immediately
-        // create a inode for root node "/"
+        // create an inode for root node "/"
         assert_eq!(efs.alloc_inode(), 0);
         let (root_inode_block_id, root_inode_offset) = efs.get_disk_inode_pos(0);
         get_block_cache(root_inode_block_id as usize, Arc::clone(&block_device))
             .lock()
             .modify(root_inode_offset, |disk_inode: &mut DiskInode| {
                 disk_inode.initialize(DiskInodeType::Directory);
+                // The root node "/" is a very special node because its DirEntry is hardcoded in the code.
+                disk_inode.ref_count = u32::MAX;
             });
         block_cache_sync_all();
         Arc::new(Mutex::new(efs))
@@ -131,6 +134,25 @@ impl EasyFileSystem {
         )
     }
     /// Get data block position according to the data block id
+
+    /// Get inode_id by block_id
+    pub fn get_inode_id_by_block_id(&self, block_id: usize, block_offset:usize) -> usize {
+        let inode_size = core::mem::size_of::<DiskInode>();
+        let inodes_per_block = (BLOCK_SZ / inode_size) as u32;
+        (block_id - self.inode_area_start_block as usize) * inodes_per_block as usize + block_offset
+    }
+
+    /// Get dir entry inode by id
+    pub fn get_dir_entry_pos(&self, inode_id: u32) -> (u32, usize) {
+        let inode_size = core::mem::size_of::<DirEntry>();
+        let inodes_per_block = (BLOCK_SZ / DIRENT_SZ) as u32;
+        let block_id = self.inode_area_start_block + inode_id / inodes_per_block;
+        (
+            block_id,
+            (inode_id % inodes_per_block) as usize * inode_size,
+        )
+    }
+    /// Get data block by id
     pub fn get_data_block_id(&self, data_block_id: u32) -> u32 {
         self.data_area_start_block + data_block_id
     }

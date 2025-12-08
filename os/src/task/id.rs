@@ -1,5 +1,10 @@
 //! Allocator for pid, task user resource, kernel stack using a simple recycle strategy.
 
+//! Task pid implementation.
+//!
+//! Assign PID to the process here. At the same time, the position of the application KernelStack
+//! is determined according to the PID.
+
 use super::ProcessControlBlock;
 use crate::config::{KERNEL_STACK_SIZE, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT_BASE, USER_STACK_SIZE};
 use crate::mm::{MapPermission, PhysPageNum, VirtAddr, KERNEL_SPACE};
@@ -67,7 +72,6 @@ pub fn pid_alloc() -> PidHandle {
 
 impl Drop for PidHandle {
     fn drop(&mut self) {
-        // trace!("drop pid {}", self.0);
         PID_ALLOCATOR.exclusive_access().dealloc(self.0);
     }
 }
@@ -79,10 +83,10 @@ pub fn kernel_stack_position(kstack_id: usize) -> (usize, usize) {
     (bottom, top)
 }
 
-/// Kernel stack for a task
+/// Kernel stack for a process(task)
 pub struct KernelStack(pub usize);
 
-/// Allocate a kernel stack for a task
+/// allocate a new kernel stack
 pub fn kstack_alloc() -> KernelStack {
     let kstack_id = KSTACK_ALLOCATOR.exclusive_access().alloc();
     let (kstack_bottom, kstack_top) = kernel_stack_position(kstack_id);

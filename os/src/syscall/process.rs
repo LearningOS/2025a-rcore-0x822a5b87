@@ -1,5 +1,9 @@
 //! Process management syscalls
 //!
+use crate::mm::MapPermission;
+use crate::timer::get_time_us;
+use crate::util::io::{read, write, SerializeToBytes};
+use crate::util::mm::{ceil, mmap, unmap};
 use crate::{
     fs::{open_file, OpenFlags},
     mm::{translated_ref, translated_refmut, translated_str},
@@ -7,7 +11,7 @@ use crate::{
         current_process, current_task, current_user_token, exit_current_and_run_next, pid2process,
         suspend_current_and_run_next, SignalFlags,
     },
-};
+    util};
 use alloc::{string::String, sync::Arc, vec::Vec};
 
 #[repr(C)]
@@ -123,7 +127,8 @@ pub fn sys_fork() -> isize {
     new_pid as isize
 }
 
-pub fn sys_exec(path: *const u8) -> isize {
+/// exec syscall
+pub fn sys_exec(path: *const u8, mut args: *const usize) -> isize {
     trace!(
         "kernel:pid[{}] sys_exec",
         current_task().unwrap().process.upgrade().unwrap().getpid()
@@ -131,7 +136,9 @@ pub fn sys_exec(path: *const u8) -> isize {
     let token = current_user_token();
     let path = translated_str(token, path);
     let mut args_vec: Vec<String> = Vec::new();
+
     loop {
+
         let arg_str_ptr = *translated_ref(token, args);
         if arg_str_ptr == 0 {
             break;
@@ -141,6 +148,7 @@ pub fn sys_exec(path: *const u8) -> isize {
             args = args.add(1);
         }
     }
+
     if let Some(app_inode) = open_file(path.as_str(), OpenFlags::RDONLY) {
         let all_data = app_inode.read_all();
         let process = current_process();
@@ -162,12 +170,9 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
     let process = current_process();
     trace!(
         "kernel::pid[{}] sys_waitpid [{}]",
-        current_task().unwrap().pid.0,
+        process.pid.0,
         pid
     );
-    let task = current_task().unwrap();
-    // find a child process
-
     let mut inner = process.inner_exclusive_access();
     if !inner
         .children
@@ -237,9 +242,8 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     0
 }
 
-/// mmap syscall
-///
-/// YOUR JOB: Implement mmap.
+
+#[allow(unused)]
 pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
     let len = core::mem::size_of::<u8>();
     let data = data as u8;
@@ -258,7 +262,6 @@ pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
                 _ => -1,
             }
         }
-        2 => get_syscall_call(id as u8),
         _ => {
             trace!(
                 "kernel: sys_trace with unknown trace_request {}",
@@ -296,6 +299,7 @@ pub fn sys_mmap(start: usize, len: usize, prot: usize) -> isize {
         }
     }
 }
+
 pub fn sys_munmap(start: usize, len: usize) -> isize {
     let len = ceil(len);
     let ret = unmap(start as *const u8, len);
@@ -317,22 +321,34 @@ pub fn sys_munmap(start: usize, len: usize) -> isize {
 //     -1
 // }
 
-/// spawn syscall
-/// YOUR JOB: Implement spawn.
-/// HINT: fork + exec =/= spawn
-pub fn sys_spawn(_path: *const u8) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_spawn NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+pub fn sys_spawn(path: *const u8) -> isize {
+    let current_task = current_task().unwrap();
+    let process = current_task.process.upgrade().unwrap();
+    trace!("kernel:pid[{}] sys_spawn", process.pid.0);
+    let token = current_user_token();
+    let _path = translated_str(token, path);
+    0
+
+    // if let Some(app_inode) = open_file(path.as_str(), OpenFlags::RDONLY) {
+    //     let new_task = current_task.spawn(app_inode.read_all().as_slice());
+    //     let new_pid = new_task.pid.0;
+    //     add_task(new_task);
+    //     new_pid as isize
+    // } else {
+    //     -1
+    // }
 }
 
-// YOUR JOB: Set task priority.
-pub fn sys_set_priority(_prio: isize) -> isize {
+pub fn sys_set_priority(prio: isize) -> isize {
+    let process = current_task().unwrap().process.upgrade();
     trace!(
         "kernel:pid[{}] sys_set_priority NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
+        process.unwrap().pid.0
     );
-    -1
+
+    if prio < 2 {
+        -1
+    } else {
+        prio
+    }
 }

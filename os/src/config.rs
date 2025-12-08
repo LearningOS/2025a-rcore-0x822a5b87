@@ -22,5 +22,5 @@ pub const MAX_SYSCALL_NUM: usize = 500;
 pub const TRAMPOLINE: usize = usize::MAX - PAGE_SIZE + 1;
 /// the virtual addr of trap context
 pub const TRAP_CONTEXT_BASE: usize = TRAMPOLINE - PAGE_SIZE;
-/// qemu board info
-pub use crate::board::{CLOCK_FREQ, MMIO};
+/// big stride used to schedule task based on stride scheduling
+pub const BIG_STRIDE: usize = 1 << 20;

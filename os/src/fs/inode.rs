@@ -1,14 +1,26 @@
+//! `Arc<Inode>` -> `OSInodeInner`: In order to open files concurrently
+//! we need to wrap `Inode` into `Arc`,but `Mutex` in `Inode` prevents
+//! file systems from being accessed simultaneously
+//!
+//! `UPSafeCell<OSInodeInner>` -> `OSInode`: for static `ROOT_INODE`,we
+//! need to wrap `OSInodeInner` into `UPSafeCell`
 use super::File;
 use crate::drivers::BLOCK_DEVICE;
-use crate::mm::UserBuffer;
+use crate::mm::{translated_str, UserBuffer};
 use crate::sync::UPSafeCell;
+use crate::task::current_user_token;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use bitflags::*;
-use easy_fs::{EasyFileSystem, Inode};
+use easy_fs::{EasyFileSystem, Fstat, Inode};
 use lazy_static::*;
 
+/// AT_FDCWD current work dir
+pub const AT_FDCWD: i32 = -100;
+
 /// inode in memory
+/// A wrapper around a filesystem inode
+/// to implement File trait atop
 pub struct OSInode {
     readable: bool,
     writable: bool,
@@ -46,6 +58,7 @@ impl OSInode {
             v.extend_from_slice(&buffer[..len]);
         }
         v
+
     }
 }
 
@@ -68,9 +81,9 @@ pub fn list_apps() {
 bitflags! {
     ///  The flags argument to the open() system call is constructed by ORing together zero or more of the following values:
     pub struct OpenFlags: u32 {
-        /// readyonly
+        /// read only
         const RDONLY = 0;
-        /// writeonly
+        /// write only
         const WRONLY = 1 << 0;
         /// read and write
         const RDWR = 1 << 1;
@@ -118,6 +131,49 @@ pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
             Arc::new(OSInode::new(readable, writable, inode))
         })
     }
+}
+
+/// linkat hard link
+pub fn linkat(
+    _old_dir_fd: i32,
+    old_path: *const u8,
+    _new_dir_fd: i32,
+    new_path: *const u8,
+    _flags: u32,
+) -> i32 {
+    let old_name = translated_str(current_user_token(), old_path);
+    let new_name = translated_str(current_user_token(), new_path);
+    if old_name == new_name {
+        debug!(
+            "sys_linkat: old name [{}] can't equal with new name [{}]",
+            old_name, new_name
+        );
+        return -1;
+    }
+
+    ROOT_INODE.linkat(new_name.as_str(), old_name.as_str())
+}
+
+/// unlinkat
+pub fn unlinkat(path: *const u8) -> i32 {
+    let path = translated_str(current_user_token(), path);
+    ROOT_INODE.unlink_at(path.as_str())
+}
+
+
+/// fstat
+pub fn fstat(file: &Arc<dyn File + Send + Sync>) -> Option<Fstat> {
+    let trait_obj_ptr = Arc::as_ptr(&file) as *const ();
+    let os_inode_ptr = trait_obj_ptr as *const OSInode;
+    if os_inode_ptr.is_null() {
+        None
+    } else {
+        unsafe {
+            let inner = (*os_inode_ptr).inner.exclusive_access();
+            Some(inner.inode.fstat())
+        }
+    }
+
 }
 
 impl File for OSInode {

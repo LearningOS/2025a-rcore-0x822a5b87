@@ -4,7 +4,7 @@ use super::{frame_alloc, FrameTracker};
 use super::{PTEFlags, PageTable, PageTableEntry};
 use super::{PhysAddr, PhysPageNum, VirtAddr, VirtPageNum};
 use super::{StepByOne, VPNRange};
-use crate::config::{MEMORY_END, MMIO, PAGE_SIZE, TRAMPOLINE};
+use crate::config::{MEMORY_END, PAGE_SIZE, TRAMPOLINE};
 use crate::sync::UPSafeCell;
 use alloc::collections::BTreeMap;
 use alloc::string::String;
@@ -13,6 +13,7 @@ use alloc::vec::Vec;
 use core::arch::asm;
 use lazy_static::*;
 use riscv::register::satp;
+use crate::board::MMIO;
 
 extern "C" {
     fn stext();
@@ -60,7 +61,7 @@ impl MemorySet {
     pub fn token(&self) -> usize {
         self.page_table.token()
     }
-    /// Assume that no conflicts.
+    /// Create a `MapArea` spanning the virtual address (VA) range from `start_va` to `end_va` with the given `permission`.
     pub fn insert_framed_area(
         &mut self,
         start_va: VirtAddr,
@@ -72,7 +73,7 @@ impl MemorySet {
             None,
         );
     }
-    /// remove a area
+    /// remove an area
     pub fn remove_area_with_start_vpn(&mut self, start_vpn: VirtPageNum) {
         if let Some((idx, area)) = self
             .areas
@@ -186,6 +187,10 @@ impl MemorySet {
             stext as usize, etext as usize
         );
         info!(
+            "[new_kernel].text [{:#x}, {:#x})",
+            stext as usize, etext as usize
+        );
+        info!(
             "[new_kernel].rodata [{:#x}, {:#x})",
             srodata as usize, erodata as usize
         );
@@ -278,6 +283,7 @@ impl MemorySet {
         for i in 0..ph_count {
             let ph = elf.program_header(i).unwrap();
             if ph.get_type().unwrap() == xmas_elf::program::Type::Load {
+                // Notice that the elf file has been loaded into virtual memory
                 let start_va: VirtAddr = (ph.virtual_addr() as usize).into();
                 let end_va: VirtAddr = ((ph.virtual_addr() + ph.mem_size()) as usize).into();
                 let mut map_perm = MapPermission::U;
@@ -293,6 +299,8 @@ impl MemorySet {
                 }
                 let map_area = MapArea::new(start_va, end_va, MapType::Framed, map_perm);
                 max_end_vpn = map_area.vpn_range.get_end();
+                // init MapArea and copy program header into the newly created MapArea
+                trace!("[user]: start loading elf");
                 memory_set.push(
                     map_area,
                     Some(&elf.input[ph.offset() as usize..(ph.offset() + ph.file_size()) as usize]),
@@ -380,6 +388,7 @@ impl MemorySet {
     }
 }
 
+/// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {
     pub vpn_range: VPNRange,
     pub data_frames: BTreeMap<VirtPageNum, FrameTracker>,

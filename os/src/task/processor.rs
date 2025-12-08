@@ -14,6 +14,7 @@ use lazy_static::*;
 
 /// Processor management structure
 pub struct Processor {
+    ///The task currently executing on the current processor
     current: Option<Arc<TaskControlBlock>>,
 
     ///The basic control flow of each core, helping to select and switch process
@@ -21,6 +22,7 @@ pub struct Processor {
 }
 
 impl Processor {
+    ///Create an empty Processor
     pub fn new() -> Self {
         Self {
             current: None,

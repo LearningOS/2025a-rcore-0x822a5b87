@@ -17,6 +17,7 @@ mod processor;
 mod signal;
 mod switch;
 #[allow(clippy::module_inception)]
+#[allow(rustdoc::private_intra_doc_links)]
 mod task;
 
 use self::id::TaskUserRes;
@@ -24,17 +25,19 @@ use crate::fs::{open_file, OpenFlags};
 use crate::task::manager::add_stopping_task;
 use crate::timer::remove_timer;
 use alloc::{sync::Arc, vec::Vec};
+use alloc::string::String;
 use lazy_static::*;
-use manager::fetch_task;
 use process::ProcessControlBlock;
+pub use manager::{fetch_task, TaskManager};
 use switch::__switch;
 
 pub use context::TaskContext;
 pub use id::{kstack_alloc, pid_alloc, KernelStack, PidHandle, IDLE_PID};
 pub use manager::{add_task, pid2process, remove_from_pid2process, remove_task, wakeup_task};
+use crate::mm::{MapPermission, VirtAddr};
 pub use processor::{
     current_kstack_top, current_process, current_task, current_trap_cx, current_trap_cx_user_va,
-    current_user_token, run_tasks, schedule, take_current_task,
+    current_user_token, run_tasks, schedule, take_current_task, Processor
 };
 pub use signal::SignalFlags;
 pub use task::{TaskControlBlock, TaskStatus};
@@ -205,24 +208,13 @@ pub fn remove_inactive_task(task: Arc<TaskControlBlock>) {
     remove_timer(Arc::clone(&task));
 }
 
-/// record syscall call
-pub fn get_syscall_call(num: u8) -> isize {
-    let task = current_task().unwrap();
-    let task_ref = task.inner_exclusive_access();
-    task_ref.calls[num as usize]
-}
-
-/// record syscall call
-pub fn record_syscall_call(num: u8) {
-    let task = current_task().unwrap();
-    task.inner_exclusive_access().calls[num as usize] += 1;
-}
 
 /// mmap
 pub fn mmap(start_va: VirtAddr, end_va: VirtAddr, map_perm: MapPermission) -> Result<(), String> {
     let task = take_current_task().unwrap();
-    let mut inner = task.inner_exclusive_access();
-    inner
+    let process = task.process.upgrade().unwrap();
+    let mut process_inner = process.inner_exclusive_access();
+    process_inner
         .memory_set
         .insert_mapped_area(start_va, end_va, map_perm)
 }
@@ -230,8 +222,9 @@ pub fn mmap(start_va: VirtAddr, end_va: VirtAddr, map_perm: MapPermission) -> Re
 /// munmap
 pub fn munmap(start_va: VirtAddr, end_va: VirtAddr, map_perm: MapPermission) -> Result<(), String> {
     let task = take_current_task().unwrap();
-    let mut inner = task.inner_exclusive_access();
-    inner
+    let process = task.process.upgrade().unwrap();
+    let mut process_inner = process.inner_exclusive_access();
+    process_inner
         .memory_set
         .delete_mapped_area(start_va, end_va, map_perm)
 }

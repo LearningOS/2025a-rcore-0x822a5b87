@@ -108,6 +108,7 @@ impl From<VirtPageNum> for usize {
     }
 }
 
+/// virtual address impl
 impl VirtAddr {
     /// Get the (floor) virtual page number
     pub fn floor(&self) -> VirtPageNum {
@@ -322,6 +323,7 @@ where
         SimpleRangeIterator::new(self.l, self.r)
     }
 }
+/// iterator for the simple range structure
 pub struct SimpleRangeIterator<T>
 where
     T: StepByOne + Copy + PartialEq + PartialOrd + Debug,
@@ -352,4 +354,5 @@ where
         }
     }
 }
+/// a simple range structure for virtual page number
 pub type VPNRange = SimpleRange<VirtPageNum>;

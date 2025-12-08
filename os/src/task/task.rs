@@ -6,6 +6,7 @@ use crate::trap::TrapContext;
 use crate::{mm::PhysPageNum, sync::UPSafeCell};
 use alloc::sync::{Arc, Weak};
 use core::cell::RefMut;
+use crate::config::BIG_STRIDE;
 
 /// Task control block structure
 pub struct TaskControlBlock {
@@ -41,9 +42,16 @@ pub struct TaskControlBlockInner {
     pub task_status: TaskStatus,
     /// It is set when active exit or execution error occurs
     pub exit_code: Option<i32>,
+
+    /// the priority of the task
+    pub prio: usize,
+
+    /// the pass of the task
+    pub pass: usize
 }
 
 impl TaskControlBlockInner {
+    /// get the trap context
     pub fn get_trap_cx(&self) -> &'static mut TrapContext {
         self.trap_cx_ppn.get_mut()
     }
@@ -51,6 +59,11 @@ impl TaskControlBlockInner {
     #[allow(unused)]
     fn get_status(&self) -> TaskStatus {
         self.task_status
+    }
+
+    /// add stride to the task
+    pub fn add_stride(&mut self) {
+        self.pass += BIG_STRIDE / self.prio;
     }
 }
 
@@ -75,6 +88,8 @@ impl TaskControlBlock {
                     task_cx: TaskContext::goto_trap_return(kstack_top),
                     task_status: TaskStatus::Ready,
                     exit_code: None,
+                    prio: 16,
+                    pass: 0,
                 })
             },
         }
@@ -83,11 +98,16 @@ impl TaskControlBlock {
 
 #[derive(Copy, Clone, PartialEq)]
 /// The execution status of the current process
+/// task status: UnInit, Ready, Running, Exited
 pub enum TaskStatus {
+    /// uninitialized
+    UnInit,
     /// ready to run
     Ready,
     /// running
     Running,
     /// blocked
     Blocked,
+    /// exited
+    Zombie,
 }

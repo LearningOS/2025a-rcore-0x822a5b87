@@ -14,7 +14,7 @@
 
 mod context;
 
-use crate::config::TRAMPOLINE;
+use crate::config::{TRAMPOLINE};
 use crate::syscall::syscall;
 use crate::task::{
     check_signals_of_current, current_add_signal, current_trap_cx, current_trap_cx_user_va,
@@ -40,10 +40,11 @@ fn set_kernel_trap_entry() {
         fn __trap_from_kernel();
     }
     unsafe {
-        stvec::write(__trap_from_kernel as usize, TrapMode::Direct);
+        stvec::write(trap_from_kernel as usize, TrapMode::Direct);
     }
 }
 /// set trap entry for traps happen in user mode
+
 fn set_user_trap_entry() {
     unsafe {
         stvec::write(TRAMPOLINE as usize, TrapMode::Direct);
@@ -115,6 +116,9 @@ pub fn trap_handler() -> ! {
 
 /// return to user space
 #[no_mangle]
+/// set the new addr of __restore asm function in TRAMPOLINE page,
+/// set the reg a0 = trap_cx_ptr, reg a1 = phy addr of usr page table,
+/// finally, jump to new addr of __restore asm function
 pub fn trap_return() -> ! {
     //disable_supervisor_interrupt();
     set_user_trap_entry();
@@ -128,18 +132,21 @@ pub fn trap_return() -> ! {
     // trace!("[kernel] trap_return: ..before return");
     unsafe {
         asm!(
-            "fence.i",
-            "jr {restore_va}",         // jump to new addr of __restore asm function
-            restore_va = in(reg) restore_va,
-            in("a0") trap_cx_user_va,      // a0 = virt addr of Trap Context
-            in("a1") user_satp,        // a1 = phy addr of usr page table
-            options(noreturn)
+        "fence.i",
+        "jr {restore_va}",         // jump to new addr of __restore asm function
+        restore_va = in(reg) restore_va,
+        in("a0") trap_cx_user_va,      // a0 = virt addr of Trap Context
+        in("a1") user_satp,        // a1 = phy addr of usr page table
+        options(noreturn)
         );
     }
 }
 
 /// handle trap from kernel
 #[no_mangle]
+/// handle trap from kernel
+/// Unimplement: traps/interrupts/exceptions from kernel mode
+/// Todo: Chapter 9: I/O device
 pub fn trap_from_kernel() -> ! {
     use riscv::register::sepc;
     trace!("stval = {:#x}, sepc = {:#x}", stval::read(), sepc::read());

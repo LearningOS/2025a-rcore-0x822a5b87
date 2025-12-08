@@ -83,4 +83,4 @@ __emergency_end:
     .align 2
 __trap_from_kernel:
     la sp, __emergency_end
-    j trap_from_kernel    
+    j trap_from_kernel

@@ -11,7 +11,9 @@ use spin::Mutex;
 pub struct BlockCache {
     cache: Vec<u8>,
     block_id: usize,
+    /// underlying block device
     block_device: Arc<dyn BlockDevice>,
+    /// whether the block is dirty
     modified: bool,
 }
 
@@ -28,7 +30,7 @@ impl BlockCache {
             modified: false,
         }
     }
-    /// Get the slice in the block cache according to the offset.
+    /// Get the address of an offset inside the cached block data
     fn addr_of_offset(&self, offset: usize) -> usize {
         &self.cache[offset] as *const _ as usize
     }
@@ -76,6 +78,7 @@ impl Drop for BlockCache {
     }
 }
 
+/// Use a block cache of 16 blocks
 const BLOCK_CACHE_SIZE: usize = 16;
 
 /// BlockCacheManager is a manager for BlockCache.
@@ -126,7 +129,7 @@ impl BlockCacheManager {
 }
 
 lazy_static! {
-    /// BLOCK_CACHE_MANAGER: Glocal instance of BlockCacheManager.
+    /// The global block cache manager
     pub static ref BLOCK_CACHE_MANAGER: Mutex<BlockCacheManager> =
         Mutex::new(BlockCacheManager::new());
 }
@@ -139,7 +142,7 @@ pub fn get_block_cache(
         .lock()
         .get_block_cache(block_id, block_device)
 }
-/// Sync(write) all the block cache to disk.
+/// Sync all block cache to block device
 pub fn block_cache_sync_all() {
     let manager = BLOCK_CACHE_MANAGER.lock();
     for (_, cache) in manager.queue.iter() {
