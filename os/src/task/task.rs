@@ -1,5 +1,5 @@
 //! Types related to task management & Functions for completely changing TCB
-use super::TaskContext;
+use super::{current_task, TaskContext};
 use super::{kstack_alloc, pid_alloc, KernelStack, PidHandle};
 use crate::config::TRAP_CONTEXT_BASE;
 use crate::mm::{MemorySet, PhysPageNum, VirtAddr, KERNEL_SPACE};
@@ -209,6 +209,54 @@ impl TaskControlBlock {
         task_control_block
         // **** release child PCB
         // ---- release parent PCB
+    }
+
+    /// parent process spawn the child process
+    pub fn spawn(self: &Arc<Self>, elf_data : &[u8]) -> Arc<Self> {
+        let (memory_set, user_stack_top, entry) = MemorySet::from_elf(elf_data);
+        let trap_cx_ppn = memory_set
+            .translate(VirtAddr::from(TRAP_CONTEXT_BASE).into())
+            .unwrap()
+            .ppn();
+
+        let pid = pid_alloc();
+        let kernel_stack = kstack_alloc();
+        let kernel_stack_top = kernel_stack.get_top();
+        let parent = current_task().unwrap();
+
+        let pcb = Arc::new(TaskControlBlock {
+            pid,
+            kernel_stack,
+            inner: unsafe {
+                UPSafeCell::new(TaskControlBlockInner{
+                    trap_cx_ppn,
+                    base_size: kernel_stack_top,
+                    task_cx: TaskContext::goto_trap_return(kernel_stack_top),
+                    task_status: TaskStatus::Ready,
+                    memory_set,
+                    parent: Some(Arc::downgrade(&parent)),
+                    children: Vec::new(),
+                    exit_code: 0,
+                    heap_bottom: user_stack_top,
+                    program_brk: user_stack_top,
+                    calls: [0; u8::MAX as usize],
+                })
+            }
+        });
+
+        let trap_cx = pcb.inner_exclusive_access().get_trap_cx();
+        *trap_cx = TrapContext::app_init_context(
+            entry,
+            user_stack_top,
+            KERNEL_SPACE.exclusive_access().token(),
+            kernel_stack_top,
+            trap_handler as usize,
+        );
+
+        let mut parent_inner = self.inner_exclusive_access();
+        parent_inner.children.push(pcb.clone());
+
+        pcb
     }
 
     /// get pid of process
