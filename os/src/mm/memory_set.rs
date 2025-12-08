@@ -48,7 +48,7 @@ impl MemorySet {
     pub fn token(&self) -> usize {
         self.page_table.token()
     }
-    /// Assume that no conflicts.
+    /// Create a `MapArea` spanning the virtual address (VA) range from `start_va` to `end_va` with the given `permission`.
     pub fn insert_framed_area(
         &mut self,
         start_va: VirtAddr,
@@ -75,8 +75,12 @@ impl MemorySet {
     /// Add a new MapArea into this MemorySet.
     /// Assuming that there are no conflicts in the virtual address
     /// space.
+    /// 1. Map a `MapArea` to the page table.
+    /// 2. If any input files are provided, copy the data from the input files into the newly initialized `MapArea`.
+    /// 3. Push MapArea into `MemorySet`
     fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
         map_area.map(&mut self.page_table);
+        // copy app data from files(such as an elf executable) if any input files is provided.
         if let Some(data) = data {
             map_area.copy_data(&mut self.page_table, data);
         }
@@ -96,11 +100,11 @@ impl MemorySet {
         // map trampoline
         memory_set.map_trampoline();
         // map kernel sections
-        info!(".text [{:#x}, {:#x})", stext as usize, etext as usize);
-        info!(".rodata [{:#x}, {:#x})", srodata as usize, erodata as usize);
-        info!(".data [{:#x}, {:#x})", sdata as usize, edata as usize);
+        info!("[new_kernel].text [{:#x}, {:#x})", stext as usize, etext as usize);
+        info!("[new_kernel].rodata [{:#x}, {:#x})", srodata as usize, erodata as usize);
+        info!("[new_kernel].data [{:#x}, {:#x})", sdata as usize, edata as usize);
         info!(
-            ".bss [{:#x}, {:#x})",
+            "[new_kernel].bss [{:#x}, {:#x})",
             sbss_with_stack as usize, ebss as usize
         );
         info!("mapping .text section");
@@ -159,10 +163,13 @@ impl MemorySet {
     /// Include sections in elf and trampoline and TrapContext and user stack,
     /// also returns user_sp_base and entry point.
     pub fn from_elf(elf_data: &[u8]) -> (Self, usize, usize) {
-        let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
         let mut memory_set = Self::new_bare();
-        Self::map_high(&mut memory_set);
-        let user_stack_top = Self::map_low(&elf, &mut memory_set);
+        // map program headers of elf, with U flag
+        let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
+
+        Self::map_higher_addr(&mut memory_set);
+        let user_stack_top = Self::map_lower_addr(&mut memory_set, &elf);
+
         (
             memory_set,
             user_stack_top,
@@ -170,11 +177,9 @@ impl MemorySet {
         )
     }
 
-    /// map_high map application address high
-    pub fn map_high(memory_set: &mut MemorySet) {
+    fn map_higher_addr(memory_set: &mut MemorySet) {
         // map trampoline
         memory_set.map_trampoline();
-
         // map TrapContext
         memory_set.push(
             MapArea::new(
@@ -187,38 +192,10 @@ impl MemorySet {
         );
     }
 
-    /// map_low map application address low
-    pub fn map_low(elf : &xmas_elf::ElfFile,memory_set: &mut MemorySet) -> usize {
-        // map program headers of elf, with U flag
-        let elf_header = elf.header;
-        let magic = elf_header.pt1.magic;
-        assert_eq!(magic, [0x7f, 0x45, 0x4c, 0x46], "invalid elf!");
-        let ph_count = elf_header.pt2.ph_count();
-        let mut max_end_vpn = VirtPageNum(0);
-        for i in 0..ph_count {
-            let ph = elf.program_header(i).unwrap();
-            if ph.get_type().unwrap() == xmas_elf::program::Type::Load {
-                let start_va: VirtAddr = (ph.virtual_addr() as usize).into();
-                let end_va: VirtAddr = ((ph.virtual_addr() + ph.mem_size()) as usize).into();
-                let mut map_perm = MapPermission::U;
-                let ph_flags = ph.flags();
-                if ph_flags.is_read() {
-                    map_perm |= MapPermission::R;
-                }
-                if ph_flags.is_write() {
-                    map_perm |= MapPermission::W;
-                }
-                if ph_flags.is_execute() {
-                    map_perm |= MapPermission::X;
-                }
-                let map_area = MapArea::new(start_va, end_va, MapType::Framed, map_perm);
-                max_end_vpn = map_area.vpn_range.get_end();
-                memory_set.push(
-                    map_area,
-                    Some(&elf.input[ph.offset() as usize..(ph.offset() + ph.file_size()) as usize]),
-                );
-            }
-        }
+    fn map_lower_addr(memory_set: &mut MemorySet, elf: & xmas_elf::ElfFile) -> usize {
+        // map .text/.rodata/... from elf
+        let max_end_vpn = Self::map_elf(memory_set, &elf);
+
         // map user stack with U flags
         let max_end_va: VirtAddr = max_end_vpn.into();
         let mut user_stack_bottom: usize = max_end_va.into();
@@ -248,7 +225,7 @@ impl MemorySet {
         user_stack_top
     }
 
-    /// Create a new address space by copy code&data from a exited process's address space.
+    /// Create a new address space by copy code&data from an exited process's address space.
     pub fn from_existed_user(user_space: &Self) -> Self {
         let mut memory_set = Self::new_bare();
         // map trampoline
@@ -268,6 +245,44 @@ impl MemorySet {
         }
         memory_set
     }
+
+    fn map_elf(memory_set: &mut MemorySet, elf: & xmas_elf::ElfFile) -> VirtPageNum {
+        let elf_header = elf.header;
+        let magic = elf_header.pt1.magic;
+        assert_eq!(magic, [0x7f, 0x45, 0x4c, 0x46], "invalid elf!");
+        let ph_count = elf_header.pt2.ph_count();
+        let mut max_end_vpn = VirtPageNum(0);
+        for i in 0..ph_count {
+            let ph = elf.program_header(i).unwrap();
+            if ph.get_type().unwrap() == xmas_elf::program::Type::Load {
+                // Notice that the elf file has been loaded into virtual memory
+                let start_va: VirtAddr = (ph.virtual_addr() as usize).into();
+                let end_va: VirtAddr = ((ph.virtual_addr() + ph.mem_size()) as usize).into();
+                let mut map_perm = MapPermission::U;
+                let ph_flags = ph.flags();
+                if ph_flags.is_read() {
+                    map_perm |= MapPermission::R;
+                }
+                if ph_flags.is_write() {
+                    map_perm |= MapPermission::W;
+                }
+                if ph_flags.is_execute() {
+                    map_perm |= MapPermission::X;
+                }
+                let map_area = MapArea::new(start_va, end_va, MapType::Framed, map_perm);
+                max_end_vpn = map_area.vpn_range.get_end();
+                // init MapArea and copy program header into the newly created MapArea
+                trace!("[user]: start loading elf");
+                memory_set.push(
+                    map_area,
+                    Some(&elf.input[ph.offset() as usize..(ph.offset() + ph.file_size()) as usize]),
+                );
+            }
+        }
+
+        max_end_vpn
+    }
+
     /// Change page table by writing satp CSR Register.
     pub fn activate(&self) {
         let satp = self.page_table.token();
@@ -275,6 +290,7 @@ impl MemorySet {
             satp::write(satp);
             asm!("sfence.vma");
         }
+        info!("[kernel]: enable kernel space.")
     }
     /// Translate a virtual page number to a page table entry
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
@@ -348,6 +364,8 @@ impl MapArea {
             map_perm: another.map_perm,
         }
     }
+
+    /// Map a VPN to a PPN and record this mapping in the page table.
     pub fn map_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
         let ppn: PhysPageNum;
         match self.map_type {
@@ -396,6 +414,7 @@ impl MapArea {
     /// data: start-aligned but maybe with shorter length
     /// assume that all frames were cleared before
     pub fn copy_data(&mut self, page_table: &mut PageTable, data: &[u8]) {
+        // only `Framed` type is permissible
         assert_eq!(self.map_type, MapType::Framed);
         let mut start: usize = 0;
         let mut current_vpn = self.vpn_range.get_start();
@@ -431,7 +450,7 @@ bitflags! {
         const R = 1 << 1;
         ///Writable
         const W = 1 << 2;
-        ///Excutable
+        ///Executable
         const X = 1 << 3;
         ///Accessible in U mode
         const U = 1 << 4;
