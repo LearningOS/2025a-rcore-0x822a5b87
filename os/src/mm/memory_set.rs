@@ -170,6 +170,7 @@ impl MemorySet {
         )
     }
 
+    /// map_high map application address high
     pub fn map_high(memory_set: &mut MemorySet) {
         // map trampoline
         memory_set.map_trampoline();
@@ -186,6 +187,7 @@ impl MemorySet {
         );
     }
 
+    /// map_low map application address low
     pub fn map_low(elf : &xmas_elf::ElfFile,memory_set: &mut MemorySet) -> usize {
         // map program headers of elf, with U flag
         let elf_header = elf.header;
