@@ -23,7 +23,11 @@ impl TaskManager {
     }
     /// Take a process out of the ready queue
     pub fn fetch(&mut self) -> Option<Arc<TaskControlBlock>> {
-        self.ready_queue.pop_front()
+        let pcb = self.ready_queue.pop_front();
+        if let Some(ref task) = pcb {
+            task.inner_exclusive_access().add_stride();
+        }
+        pcb
     }
 }
 
