@@ -109,6 +109,10 @@ impl TaskControlBlockInner {
     pub fn add_stride(&mut self) {
         self.pass += BIG_STRIDE / self.prio;
     }
+    /// add stride to the task
+    pub fn add_stride(&mut self) {
+        self.pass += BIG_STRIDE / self.prio;
+    }
 }
 
 impl TaskControlBlock {
