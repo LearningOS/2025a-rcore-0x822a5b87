@@ -109,10 +109,6 @@ impl TaskControlBlockInner {
     pub fn add_stride(&mut self) {
         self.pass += BIG_STRIDE / self.prio;
     }
-    /// add stride to the task
-    pub fn add_stride(&mut self) {
-        self.pass += BIG_STRIDE / self.prio;
-    }
 }
 
 impl TaskControlBlock {
@@ -282,6 +278,14 @@ impl TaskControlBlock {
                     parent: Some(Arc::downgrade(&parent)),
                     children: Vec::new(),
                     exit_code: 0,
+                    fd_table: vec![
+                        // 0 -> stdin
+                        Some(Arc::new(Stdin)),
+                        // 1 -> stdout
+                        Some(Arc::new(Stdout)),
+                        // 2 -> stderr
+                        Some(Arc::new(Stdout)),
+                    ],
                     heap_bottom: user_stack_top,
                     program_brk: user_stack_top,
                     calls: [0; u8::MAX as usize],

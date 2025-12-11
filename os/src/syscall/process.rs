@@ -2,6 +2,12 @@
 //!
 use alloc::sync::Arc;
 
+use crate::mm::MapPermission;
+use crate::task::get_syscall_call;
+use crate::timer::get_time_us;
+use crate::util;
+use crate::util::io::{read, write, SerializeToBytes};
+use crate::util::mm::{ceil, mmap, unmap};
 use crate::{
     fs::{open_file, OpenFlags},
     mm::{translated_refmut, translated_str},
@@ -10,15 +16,6 @@ use crate::{
         suspend_current_and_run_next,
     },
 };
-use crate::mm::{translated_refmut, translated_str, MapPermission};
-use crate::task::{
-    add_task, current_task, current_user_token, exit_current_and_run_next, suspend_current_and_run_next,
-};
-use crate::timer::get_time_us;
-use crate::util;
-use crate::util::io::{SerializeToBytes};
-use crate::util::mm::{ceil, mmap, unmap};
-use alloc::sync::Arc;
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug)]
@@ -197,33 +194,8 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     0
 }
 
-/// `sys_mmap` will allocate a range of physical pages and map them to a given virtual address range.
-pub fn sys_mmap(start: usize, len: usize, prot: usize) -> isize {
-    let len = ceil(len);
 
-    let prot_result = MMapProt::try_from(prot);
-    if prot_result.is_err() {
-        trace!("[kernel]: sys_mmap with malformed prot {}", prot);
-        return -1;
-    }
-    let prot = prot_result.unwrap();
-    let map_perm: Result<MapPermission, MMapProtError> = prot.try_into();
-    if map_perm.is_err() {
-        trace!("[kernel]: sys_mmap with invalid prot bits {}", prot.bits);
-        return -1;
-    }
-
-    let map_perm = map_perm.unwrap();
-
-    let ret = mmap(start as *const u8, len, map_perm);
-    match ret {
-        Ok(_) => 0,
-        Err(e) => {
-            trace!("[kernel]: sys_mmap failed: {}", e);
-            -1
-        }
-    }
-/// YOUR JOB: Implement mmap.
+#[allow(unused)]
 pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
     let len = core::mem::size_of::<u8>();
     let data = data as u8;
@@ -248,6 +220,11 @@ pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
                 "kernel: sys_trace with unknown trace_request {}",
                 trace_request
             );
+            -1
+        }
+    }
+}
+
 /// `sys_mmap` will allocate a range of physical pages and map them to a given virtual address range.
 pub fn sys_mmap(start: usize, len: usize, prot: usize) -> isize {
     let len = ceil(len);
@@ -276,25 +253,6 @@ pub fn sys_mmap(start: usize, len: usize, prot: usize) -> isize {
     }
 }
 
-// YOUR JOB: Implement mmap.
-pub fn sys_mmap(_start: usize, _len: usize, _port: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_mmap NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
-}
-
-pub fn sys_munmap(start: usize, len: usize) -> isize {
-    let len = ceil(len);
-    let ret = unmap(start as *const u8, len);
-    match ret {
-        Ok(_) => 0,
-        Err(e) => {
-            trace!("[kernel]: sys_munmap failed: {}", e);
-            -1
-        }
-    }
 pub fn sys_munmap(start: usize, len: usize) -> isize {
     let len = ceil(len);
     let ret = unmap(start as *const u8, len);
@@ -322,8 +280,9 @@ pub fn sys_spawn(path: *const u8) -> isize {
     trace!("kernel:pid[{}] sys_spawn", current_task.pid.0);
     let token = current_user_token();
     let path = translated_str(token, path);
-    if let Some(data) = get_app_data_by_name(path.as_str()) {
-        let new_task = current_task.spawn(data);
+
+    if let Some(app_inode) = open_file(path.as_str(), OpenFlags::RDONLY) {
+        let new_task = current_task.spawn(app_inode.read_all().as_slice());
         let new_pid = new_task.pid.0;
         add_task(new_task);
         new_pid as isize
