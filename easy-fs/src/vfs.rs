@@ -45,7 +45,7 @@ impl Inode {
     fn find_inode_id(&self, name: &str, disk_inode: &DiskInode) -> Option<u32> {
         // assert it is a directory
         assert!(disk_inode.is_dir());
-        let file_count = (disk_inode.size as usize) / DIRENT_SZ;
+        let file_count = disk_inode.dir_count();
         let mut dirent = DirEntry::empty();
         for i in 0..file_count {
             assert_eq!(
@@ -90,20 +90,42 @@ impl Inode {
         }
         disk_inode.increase_size(new_size, v, &self.block_device);
     }
-    /// Create inode under current inode by name
-    pub fn create(&self, name: &str) -> Option<Arc<Inode>> {
-        let mut fs = self.fs.lock();
+
+    fn exist(&self, name: &str) -> bool {
         let op = |root_inode: &DiskInode| {
             // assert it is a directory
             assert!(root_inode.is_dir());
             // has the file been created?
             self.find_inode_id(name, root_inode)
         };
-        if self.read_disk_inode(op).is_some() {
+        self.read_disk_inode(op).is_some()
+    }
+
+    fn add_dir_entry(&self, name: &str, inode_id: u32, fs: &mut MutexGuard<EasyFileSystem>) {
+        self.modify_disk_inode(|parent_node| {
+            // append file in the dirent
+            let file_count = parent_node.dir_count();
+            let new_size = (file_count + 1) * DIRENT_SZ;
+            // increase size
+            self.increase_size(new_size as u32, parent_node, fs);
+            // write dirent
+            let dirent = DirEntry::new(name, inode_id);
+            parent_node.write_at(
+                file_count * DIRENT_SZ,
+                dirent.as_bytes(),
+                &self.block_device,
+            );
+        });
+    }
+
+    /// Create inode under current inode by name
+    pub fn create(&self, name: &str) -> Option<Arc<Inode>> {
+        let mut fs = self.fs.lock();
+        if self.exist(name) {
             return None;
         }
         // create a new file
-        // alloc a inode with an indirect block
+        // alloc an inode with an indirect block
         let new_inode_id = fs.alloc_inode();
         // initialize inode
         let (new_inode_block_id, new_inode_block_offset) = fs.get_disk_inode_pos(new_inode_id);
@@ -112,20 +134,7 @@ impl Inode {
             .modify(new_inode_block_offset, |new_inode: &mut DiskInode| {
                 new_inode.initialize(DiskInodeType::File);
             });
-        self.modify_disk_inode(|root_inode| {
-            // append file in the dirent
-            let file_count = (root_inode.size as usize) / DIRENT_SZ;
-            let new_size = (file_count + 1) * DIRENT_SZ;
-            // increase size
-            self.increase_size(new_size as u32, root_inode, &mut fs);
-            // write dirent
-            let dirent = DirEntry::new(name, new_inode_id);
-            root_inode.write_at(
-                file_count * DIRENT_SZ,
-                dirent.as_bytes(),
-                &self.block_device,
-            );
-        });
+        self.add_dir_entry(name, new_inode_id, &mut fs);
 
         let (block_id, block_offset) = fs.get_disk_inode_pos(new_inode_id);
         block_cache_sync_all();
@@ -138,6 +147,29 @@ impl Inode {
         )))
         // release efs lock automatically by compiler
     }
+
+    /// Create link inode under current inode by name
+    pub fn create_link(&self, new_name: &str, old_name: &str) -> i32 {
+        let mut fs = self.fs.lock();
+        if self.exist(new_name) {
+            return -1;
+        }
+
+        let op = |root_inode: &DiskInode| {
+            // assert it is a directory
+            assert!(root_inode.is_dir());
+            // has the file been created?
+            self.find_inode_id(old_name, root_inode)
+        };
+        if let Some(old_inode_id) = self.read_disk_inode(op) {
+            self.add_dir_entry(new_name, old_inode_id, &mut fs);
+            block_cache_sync_all();
+            0
+        } else {
+            -1
+        }
+    }
+
     /// List inodes under current inode
     pub fn ls(&self) -> Vec<String> {
         let _fs = self.fs.lock();

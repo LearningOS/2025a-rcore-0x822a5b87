@@ -81,6 +81,7 @@ impl EasyFileSystem {
         block_cache_sync_all();
         Arc::new(Mutex::new(efs))
     }
+
     /// Open a block device as a filesystem
     pub fn open(block_device: Arc<dyn BlockDevice>) -> Arc<Mutex<Self>> {
         // read SuperBlock
@@ -103,6 +104,7 @@ impl EasyFileSystem {
                 Arc::new(Mutex::new(efs))
             })
     }
+
     /// Get the root inode of the filesystem
     pub fn root_inode(efs: &Arc<Mutex<Self>>) -> Inode {
         let block_device = Arc::clone(&efs.lock().block_device);
@@ -111,6 +113,7 @@ impl EasyFileSystem {
         // release efs lock
         Inode::new(block_id, block_offset, Arc::clone(efs), block_device)
     }
+
     /// Get inode by id
     pub fn get_disk_inode_pos(&self, inode_id: u32) -> (u32, usize) {
         let inode_size = core::mem::size_of::<DiskInode>();

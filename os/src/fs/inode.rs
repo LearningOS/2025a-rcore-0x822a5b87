@@ -6,13 +6,17 @@
 //! need to wrap `OSInodeInner` into `UPSafeCell`
 use super::File;
 use crate::drivers::BLOCK_DEVICE;
-use crate::mm::UserBuffer;
+use crate::mm::{translated_str, UserBuffer};
 use crate::sync::UPSafeCell;
+use crate::task::current_user_token;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use bitflags::*;
 use easy_fs::{EasyFileSystem, Inode};
 use lazy_static::*;
+
+/// AT_FDCWD current work dir
+pub const AT_FDCWD: i32 = -100;
 
 /// inode in memory
 /// A wrapper around a filesystem inode
@@ -74,9 +78,9 @@ pub fn list_apps() {
 bitflags! {
     ///  The flags argument to the open() system call is constructed by ORing together zero or more of the following values:
     pub struct OpenFlags: u32 {
-        /// readyonly
+        /// read only
         const RDONLY = 0;
-        /// writeonly
+        /// write only
         const WRONLY = 1 << 0;
         /// read and write
         const RDWR = 1 << 1;
@@ -123,6 +127,27 @@ pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
             Arc::new(OSInode::new(readable, writable, inode))
         })
     }
+}
+
+/// linkat hard link
+pub fn linkat(
+    _old_dir_fd: i32,
+    old_path: *const u8,
+    _new_dir_fd: i32,
+    new_path: *const u8,
+    _flags: u32,
+) -> i32 {
+    let old_name = translated_str(current_user_token(), old_path);
+    let new_name = translated_str(current_user_token(), new_path);
+    if old_name == new_name {
+        debug!(
+            "sys_linkat: old name [{}] can't equal with new name [{}]",
+            old_name, new_name
+        );
+        return -1;
+    }
+
+    ROOT_INODE.create_link(new_name.as_str(), old_name.as_str())
 }
 
 impl File for OSInode {

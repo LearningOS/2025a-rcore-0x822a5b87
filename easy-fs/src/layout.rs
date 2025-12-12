@@ -102,6 +102,10 @@ impl DiskInode {
     pub fn is_dir(&self) -> bool {
         self.type_ == DiskInodeType::Directory
     }
+    pub fn dir_count(&self) -> usize {
+        assert!(self.is_dir());
+        (self.size as usize) / DIRENT_SZ
+    }
     /// Whether this inode is a file
     #[allow(unused)]
     pub fn is_file(&self) -> bool {
@@ -161,7 +165,7 @@ impl DiskInode {
                 })
         }
     }
-    /// Inncrease the size of current disk inode
+    /// Increase the size of current disk inode
     pub fn increase_size(
         &mut self,
         new_size: u32,

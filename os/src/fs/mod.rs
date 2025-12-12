@@ -17,7 +17,7 @@ pub trait File: Send + Sync {
     fn write(&self, buf: UserBuffer) -> usize;
 }
 
-/// The stat of a inode
+/// The stat of an inode
 #[repr(C)]
 #[derive(Debug)]
 pub struct Stat {
@@ -46,5 +46,5 @@ bitflags! {
     }
 }
 
-pub use inode::{list_apps, open_file, OSInode, OpenFlags};
+pub use inode::{linkat, list_apps, open_file, OpenFlags, AT_FDCWD};
 pub use stdio::{Stdin, Stdout};
