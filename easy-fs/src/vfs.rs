@@ -8,6 +8,16 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use spin::{Mutex, MutexGuard};
 
+/// Fstat
+pub struct Fstat {
+    /// ref count
+    pub ref_count: u32,
+    /// is directory
+    pub is_dir: bool,
+    /// inode id
+    pub inode_id: usize,
+}
+
 /// Virtual filesystem layer over easy-fs
 pub struct Inode {
     block_id: usize,
@@ -216,6 +226,19 @@ impl Inode {
     pub fn unlink_at(&self, path: &str) -> i32 {
         let mut fs = self.fs.lock();
         self.drop_dir_entry(path, &mut fs)
+    }
+
+    /// fstat
+    pub fn fstat(&self) -> Fstat {
+        let fs = self.fs.lock();
+        self.read_disk_inode(|disk_inode: &DiskInode| {
+            let inode_id = fs.get_inode_id_by_block_id(self.block_id);
+            Fstat{
+                ref_count: disk_inode.ref_count,
+                is_dir: disk_inode.is_dir(),
+                inode_id,
+            }
+        })
     }
 
     /// List inodes under current inode

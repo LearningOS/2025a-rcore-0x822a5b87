@@ -12,7 +12,7 @@ use crate::task::current_user_token;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use bitflags::*;
-use easy_fs::{EasyFileSystem, Inode};
+use easy_fs::{EasyFileSystem, Fstat, Inode};
 use lazy_static::*;
 
 /// AT_FDCWD current work dir
@@ -120,7 +120,6 @@ pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
                 .map(|inode| Arc::new(OSInode::new(readable, writable, inode)))
         }
     } else {
-
         ROOT_INODE.find(name).map(|inode| {
             if flags.contains(OpenFlags::TRUNC) {
                 inode.clear();
@@ -155,6 +154,22 @@ pub fn linkat(
 pub fn unlinkat(path: *const u8) -> i32 {
     let path = translated_str(current_user_token(), path);
     ROOT_INODE.unlink_at(path.as_str())
+}
+
+
+/// fstat
+pub fn fstat(file: &Arc<dyn File + Send + Sync>) -> Option<Fstat> {
+    let trait_obj_ptr = Arc::as_ptr(&file) as *const ();
+    let os_inode_ptr = trait_obj_ptr as *const OSInode;
+    if os_inode_ptr.is_null() {
+        None
+    } else {
+        unsafe {
+            let inner = (*os_inode_ptr).inner.exclusive_access();
+            Some(inner.inode.fstat())
+        }
+    }
+
 }
 
 impl File for OSInode {

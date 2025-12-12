@@ -1,7 +1,7 @@
 //! File and filesystem-related syscalls
 
-use crate::fs::{linkat, open_file, unlinkat, OpenFlags, Stat, AT_FDCWD};
-use crate::mm::{translated_byte_buffer, translated_str, UserBuffer};
+use crate::fs::{fstat, linkat, open_file, unlinkat, OpenFlags, Stat, StatMode, AT_FDCWD};
+use crate::mm::{translated_byte_buffer, translated_refmut, translated_str, UserBuffer};
 use crate::task::{current_task, current_user_token};
 
 pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
@@ -76,13 +76,31 @@ pub fn sys_close(fd: usize) -> isize {
     0
 }
 
-/// YOUR JOB: Implement fstat.
-pub fn sys_fstat(_fd: usize, _st: *mut Stat) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_fstat NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+pub fn sys_fstat(fd: usize, st: *mut Stat) -> isize {
+    let task = current_task().unwrap();
+    trace!("kernel:pid[{}] sys_fstat", task.pid.0);
+    let inner = task.inner_exclusive_access();
+    let fd_item = inner.fd_table.get(fd).and_then(|opt | opt.clone());
+    drop(inner);
+    if fd_item.is_none() {
+        return -1
+    }
+
+    let stat = fstat(&fd_item.unwrap());
+    let st = translated_refmut(current_user_token(), st);
+    if stat.is_none() {
+        st.mode = StatMode::NULL;
+    } else {
+        let stat = stat.unwrap();
+        st.ino = stat.inode_id as u64;
+        st.nlink = stat.ref_count;
+        if stat.is_dir {
+            st.mode = StatMode::DIR;
+        } else {
+            st.mode = StatMode::FILE;
+        }
+    }
+    0
 }
 
 pub fn sys_linkat(old_name: *const u8, new_name: *const u8) -> isize {

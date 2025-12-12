@@ -46,5 +46,5 @@ bitflags! {
     }
 }
 
-pub use inode::{linkat, unlinkat, list_apps, open_file, OpenFlags, AT_FDCWD};
+pub use inode::{linkat, unlinkat, fstat, list_apps, open_file, OpenFlags, AT_FDCWD};
 pub use stdio::{Stdin, Stdout};

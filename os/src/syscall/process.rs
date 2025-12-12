@@ -175,9 +175,6 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
     // ---- release current PCB automatically
 }
 
-/// YOUR JOB: get time with second and microsecond
-/// HINT: You might reimplement it with virtual memory management.
-/// HINT: What if [`TimeVal`] is split by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
     let us = get_time_us();
