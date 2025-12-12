@@ -448,6 +448,7 @@ impl DirEntry {
     pub fn is_valid(&self) -> bool {
         self.inode_id != 0
     }
+    #[allow(unused)]
     pub fn mark_valid(&mut self) {
         self.inode_id = 0
     }

@@ -1,5 +1,6 @@
 //! File and filesystem-related syscalls
-use crate::fs::{linkat, open_file, OpenFlags, Stat, AT_FDCWD};
+
+use crate::fs::{linkat, open_file, unlinkat, OpenFlags, Stat, AT_FDCWD};
 use crate::mm::{translated_byte_buffer, translated_str, UserBuffer};
 use crate::task::{current_task, current_user_token};
 
@@ -90,11 +91,8 @@ pub fn sys_linkat(old_name: *const u8, new_name: *const u8) -> isize {
     linkat(AT_FDCWD, old_name, AT_FDCWD, new_name, 0) as isize
 }
 
-/// YOUR JOB: Implement unlinkat.
-pub fn sys_unlinkat(_name: *const u8) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_unlinkat NOT IMPLEMENTED",
-        current_task().unwrap().pid.0
-    );
-    -1
+pub fn sys_unlinkat(name: *const u8) -> isize {
+    let pid = current_task().unwrap().pid.0;
+    trace!("kernel:pid[{}] sys_unlinkat", pid);
+    unlinkat(name) as isize
 }
