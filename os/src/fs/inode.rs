@@ -120,7 +120,20 @@ pub fn open_file(name: &str, flags: OpenFlags) -> Option<Arc<OSInode>> {
                 .map(|inode| Arc::new(OSInode::new(readable, writable, inode)))
         }
     } else {
+        {
+            // TODO
+            for x in ROOT_INODE.ls() {
+                println!("x = {}", x)
+            }
+        }
+
+
         ROOT_INODE.find(name).map(|inode| {
+            {
+                // TODO
+                println!("name = {}", name)
+            }
+
             if flags.contains(OpenFlags::TRUNC) {
                 inode.clear();
             }
@@ -147,7 +160,7 @@ pub fn linkat(
         return -1;
     }
 
-    ROOT_INODE.create_link(new_name.as_str(), old_name.as_str())
+    ROOT_INODE.linkat(new_name.as_str(), old_name.as_str())
 }
 
 impl File for OSInode {

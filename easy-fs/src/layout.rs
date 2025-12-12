@@ -6,7 +6,7 @@ use core::fmt::{Debug, Formatter, Result};
 /// Magic number for sanity check
 const EFS_MAGIC: u32 = 0x3b800001;
 /// The max number of direct inodes
-const INODE_DIRECT_COUNT: usize = 28;
+const INODE_DIRECT_COUNT: usize = 27;
 /// The max length of inode name
 const NAME_LENGTH_LIMIT: usize = 27;
 /// The max number of indirect1 inodes
@@ -67,49 +67,59 @@ impl SuperBlock {
         self.magic == EFS_MAGIC
     }
 }
-/// Type of a disk inode
+/// Type of disk inode
 #[derive(PartialEq)]
 pub enum DiskInodeType {
     File,
     Directory,
 }
 
-/// A indirect block
+/// An indirect block
 type IndirectBlock = [u32; BLOCK_SZ / 4];
 /// A data block
 type DataBlock = [u8; BLOCK_SZ];
 /// A disk inode
 #[repr(C)]
 pub struct DiskInode {
+    pub ref_count: u32,
     pub size: u32,
     pub direct: [u32; INODE_DIRECT_COUNT],
     pub indirect1: u32,
     pub indirect2: u32,
-    type_: DiskInodeType,
+    inode_type: DiskInodeType,
 }
 
 impl DiskInode {
     /// Initialize a disk inode, as well as all direct inodes under it
     /// indirect1 and indirect2 block are allocated only when they are needed
-    pub fn initialize(&mut self, type_: DiskInodeType) {
+    pub fn initialize(&mut self, disk_inode_type: DiskInodeType) {
+        // It's noteworthy that ref_count is initialized to 0 rather than 1.
+        // This is because a reference is linked when a DirEntry is created.
+        self.ref_count = 0;
         self.size = 0;
         self.direct.iter_mut().for_each(|v| *v = 0);
         self.indirect1 = 0;
         self.indirect2 = 0;
-        self.type_ = type_;
+        self.inode_type = disk_inode_type;
     }
     /// Whether this inode is a directory
     pub fn is_dir(&self) -> bool {
-        self.type_ == DiskInodeType::Directory
+        self.inode_type == DiskInodeType::Directory
     }
     pub fn dir_count(&self) -> usize {
         assert!(self.is_dir());
         (self.size as usize) / DIRENT_SZ
     }
+    pub fn deref(&mut self) {
+        self.ref_count -= 1;
+    }
+    pub fn empty(&self) -> bool {
+        self.ref_count == 0
+    }
     /// Whether this inode is a file
     #[allow(unused)]
     pub fn is_file(&self) -> bool {
-        self.type_ == DiskInodeType::File
+        self.inode_type == DiskInodeType::File
     }
     /// Return block number correspond to size.
     pub fn data_blocks(&self) -> u32 {
@@ -434,5 +444,28 @@ impl DirEntry {
     /// Get inode number of the entry
     pub fn inode_id(&self) -> u32 {
         self.inode_id
+    }
+    pub fn is_valid(&self) -> bool {
+        self.inode_id != 0
+    }
+    pub fn mark_valid(&mut self) {
+        self.inode_id = 0
+    }
+    pub fn equal(&self, name: &str) -> bool {
+        self.is_valid() && self.name() == name
+    }
+}
+
+pub struct NodePos {
+    pub file_inode_id: u32,
+    pub dir_entry_index: usize,
+}
+
+impl NodePos {
+    pub fn new(file_inode_id: u32, dir_entry_index: usize) -> NodePos {
+        NodePos {
+            file_inode_id,
+            dir_entry_index,
+        }
     }
 }

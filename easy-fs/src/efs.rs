@@ -2,9 +2,11 @@ use super::{
     block_cache_sync_all, get_block_cache, Bitmap, BlockDevice, DiskInode, DiskInodeType, Inode,
     SuperBlock,
 };
+use crate::layout::{DirEntry, DIRENT_SZ};
 use crate::BLOCK_SZ;
 use alloc::sync::Arc;
 use spin::Mutex;
+
 ///An easy file system on block
 pub struct EasyFileSystem {
     ///Real device
@@ -70,13 +72,15 @@ impl EasyFileSystem {
             },
         );
         // write back immediately
-        // create a inode for root node "/"
+        // create an inode for root node "/"
         assert_eq!(efs.alloc_inode(), 0);
         let (root_inode_block_id, root_inode_offset) = efs.get_disk_inode_pos(0);
         get_block_cache(root_inode_block_id as usize, Arc::clone(&block_device))
             .lock()
             .modify(root_inode_offset, |disk_inode: &mut DiskInode| {
                 disk_inode.initialize(DiskInodeType::Directory);
+                // The root node "/" is a very special node because its DirEntry is hardcoded in the code.
+                disk_inode.ref_count = u32::MAX;
             });
         block_cache_sync_all();
         Arc::new(Mutex::new(efs))
@@ -118,6 +122,17 @@ impl EasyFileSystem {
     pub fn get_disk_inode_pos(&self, inode_id: u32) -> (u32, usize) {
         let inode_size = core::mem::size_of::<DiskInode>();
         let inodes_per_block = (BLOCK_SZ / inode_size) as u32;
+        let block_id = self.inode_area_start_block + inode_id / inodes_per_block;
+        (
+            block_id,
+            (inode_id % inodes_per_block) as usize * inode_size,
+        )
+    }
+
+    /// Get dir entry inode by id
+    pub fn get_dir_entry_pos(&self, inode_id: u32) -> (u32, usize) {
+        let inode_size = core::mem::size_of::<DirEntry>();
+        let inodes_per_block = (BLOCK_SZ / DIRENT_SZ) as u32;
         let block_id = self.inode_area_start_block + inode_id / inodes_per_block;
         (
             block_id,
