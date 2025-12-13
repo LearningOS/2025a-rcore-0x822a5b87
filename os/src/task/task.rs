@@ -182,8 +182,14 @@ impl TaskControlBlock {
             .unwrap()
             .ppn();
         // push arguments on user stack
+        // 长度是 args.len() + 1 是因为我们要以 NULL 作为结尾
+        // * core::mem::size_of::<usize>() 是因为我们这里是指针
         user_sp -= (args.len() + 1) * core::mem::size_of::<usize>();
         let argv_base = user_sp;
+        // 背景：用户栈上已预留 (args.len()+1)*size_of::<usize>() 字节空间，用于存储 argv 指针数组（每个元素是参数字符串地址，末尾为NULL）
+        // 问题：内核态仅知道该数组每个元素的用户态虚拟地址（argv_base + arg * size_of::<usize>()），无法直接访问用户态内存
+        // 解决：通过 translated_refmut 结合用户页表（memory_set.token()），将用户态虚拟地址翻译为内核态可直接解引用的可变引用
+        // 效果：内核可通过该引用修改用户栈上 argv 数组的内容（后续赋值参数字符串地址/NULL）
         let mut argv: Vec<_> = (0..=args.len())
             .map(|arg| {
                 translated_refmut(
@@ -192,10 +198,16 @@ impl TaskControlBlock {
                 )
             })
             .collect();
+        // 使用 NULL 作为结尾
         *argv[args.len()] = 0;
+
+        // 将args参数写入栈中
         for i in 0..args.len() {
+            // 为参数分配内存，因为String是不包含 '\0' 的，所以这里长度必须+1
             user_sp -= args[i].len() + 1;
+            // 让指针地址指向字符串的起始位置
             *argv[i] = user_sp;
+            // 将字符串写入到对应的虚拟内存地址
             let mut p = user_sp;
             for c in args[i].as_bytes() {
                 *translated_refmut(memory_set.token(), p as *mut u8) = *c;
@@ -203,7 +215,7 @@ impl TaskControlBlock {
             }
             *translated_refmut(memory_set.token(), p as *mut u8) = 0;
         }
-        // make the user_sp aligned to 8B for k210 platform
+        // 进行内存对齐
         user_sp -= user_sp % core::mem::size_of::<usize>();
 
         // **** access current TCB exclusively

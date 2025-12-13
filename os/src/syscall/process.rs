@@ -53,6 +53,7 @@ pub fn sys_exec(path: *const u8, mut args: *const usize) -> isize {
     trace!("kernel:pid[{}] sys_exec", current_task().unwrap().pid.0);
     let token = current_user_token();
     let path = translated_str(token, path);
+    // 解析命令行参数
     let mut args_vec: Vec<String> = Vec::new();
     loop {
         let arg_str_ptr = *translated_ref(token, args);
