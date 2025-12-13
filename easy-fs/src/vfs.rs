@@ -232,7 +232,7 @@ impl Inode {
     pub fn fstat(&self) -> Fstat {
         let fs = self.fs.lock();
         self.read_disk_inode(|disk_inode: &DiskInode| {
-            let inode_id = fs.get_inode_id_by_block_id(self.block_id);
+            let inode_id = fs.get_inode_id_by_block_id(self.block_id, self.block_offset);
             Fstat{
                 ref_count: disk_inode.ref_count,
                 is_dir: disk_inode.is_dir(),
