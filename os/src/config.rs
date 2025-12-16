@@ -24,3 +24,11 @@ pub const TRAMPOLINE: usize = usize::MAX - PAGE_SIZE + 1;
 pub const TRAP_CONTEXT_BASE: usize = TRAMPOLINE - PAGE_SIZE;
 /// big stride used to schedule task based on stride scheduling
 pub const BIG_STRIDE: usize = 1 << 20;
+/// value of deadlock detected
+pub const DEADLOCK_SIGNAL: i32 = -0xdead;
+/// need wait
+pub const WAIT_SIGNAL: i32 = 1234;
+/// max thread
+pub const MAX_THREAD: usize = 0x5;
+/// max lock
+pub const MAX_LOCK: usize = 0x5;

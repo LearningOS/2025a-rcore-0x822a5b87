@@ -4,19 +4,11 @@ use crate::{
     trap::{trap_handler, TrapContext},
 };
 use alloc::sync::Arc;
+use crate::syscall::sys_trace_context;
+
 /// thread create syscall
 pub fn sys_thread_create(entry: usize, arg: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] tid[{}] sys_thread_create",
-        current_task().unwrap().process.upgrade().unwrap().getpid(),
-        current_task()
-            .unwrap()
-            .inner_exclusive_access()
-            .res
-            .as_ref()
-            .unwrap()
-            .tid
-    );
+    let (_, _) = sys_trace_context();
     let task = current_task().unwrap();
     let process = task.process.upgrade().unwrap();
     // create a new thread

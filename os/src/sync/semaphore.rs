@@ -11,22 +11,30 @@ pub struct Semaphore {
 }
 
 pub struct SemaphoreInner {
+    pub id: usize,
     pub count: isize,
     pub wait_queue: VecDeque<Arc<TaskControlBlock>>,
 }
 
 impl Semaphore {
     /// Create a new semaphore
-    pub fn new(res_count: usize) -> Self {
+    pub fn new(id: usize, res_count: usize) -> Self {
         trace!("kernel: Semaphore::new");
         Self {
             inner: unsafe {
                 UPSafeCell::new(SemaphoreInner {
+                    id,
                     count: res_count as isize,
                     wait_queue: VecDeque::new(),
                 })
             },
         }
+    }
+
+    /// return id
+    pub fn id(&self) -> usize {
+        let inner = self.inner.exclusive_access();
+        inner.id
     }
 
     /// up operation of semaphore

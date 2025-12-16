@@ -8,6 +8,8 @@ use alloc::{collections::VecDeque, sync::Arc};
 
 /// Mutex trait
 pub trait Mutex: Sync + Send {
+    /// return id
+    fn id(&self) -> usize;
     /// Lock the mutex
     fn lock(&self);
     /// Unlock the mutex
@@ -16,19 +18,26 @@ pub trait Mutex: Sync + Send {
 
 /// Spinlock Mutex struct
 pub struct MutexSpin {
+    id: usize,
     locked: UPSafeCell<bool>,
 }
 
 impl MutexSpin {
     /// Create a new spinlock mutex
-    pub fn new() -> Self {
+    pub fn new(id: usize) -> Self {
         Self {
+            id,
             locked: unsafe { UPSafeCell::new(false) },
         }
     }
 }
 
 impl Mutex for MutexSpin {
+    // id
+    fn id(&self) -> usize {
+        self.id
+    }
+
     /// Lock the spinlock mutex
     fn lock(&self) {
         trace!("kernel: MutexSpin::lock");
@@ -54,6 +63,7 @@ impl Mutex for MutexSpin {
 
 /// Blocking Mutex struct
 pub struct MutexBlocking {
+    id: usize,
     inner: UPSafeCell<MutexBlockingInner>,
 }
 
@@ -64,9 +74,10 @@ pub struct MutexBlockingInner {
 
 impl MutexBlocking {
     /// Create a new blocking mutex
-    pub fn new() -> Self {
+    pub fn new(id: usize) -> Self {
         trace!("kernel: MutexBlocking::new");
         Self {
+            id,
             inner: unsafe {
                 UPSafeCell::new(MutexBlockingInner {
                     locked: false,
@@ -78,6 +89,11 @@ impl MutexBlocking {
 }
 
 impl Mutex for MutexBlocking {
+    // id
+    fn id(&self) -> usize {
+        self.id
+    }
+
     /// lock the blocking mutex
     fn lock(&self) {
         trace!("kernel: MutexBlocking::lock");

@@ -99,7 +99,8 @@ pub const SYSCALL_CONDVAR_WAIT: usize = 473;
 
 mod fs;
 mod process;
-mod sync;
+/// sync
+pub mod sync;
 mod thread;
 
 use fs::*;
@@ -108,6 +109,7 @@ use sync::*;
 use thread::*;
 
 use crate::fs::Stat;
+use crate::task::current_task;
 
 /// handle syscall exception with `syscall_id` and other arguments
 pub fn syscall(syscall_id: usize, args: [usize; 4]) -> isize {
@@ -151,3 +153,18 @@ pub fn syscall(syscall_id: usize, args: [usize; 4]) -> isize {
         _ => panic!("Unsupported syscall_id: {}", syscall_id),
     }
 }
+
+fn sys_trace_context() -> (usize, usize) {
+    let tid = current_task()
+        .unwrap()
+        .inner_exclusive_access()
+        .res
+        .as_ref()
+        .unwrap()
+        .tid;
+    let pid = current_task().unwrap().process.upgrade().unwrap().getpid();
+    debug!("kernel:pid[{}] tid[{}] sys_mutex_create", pid, tid);
+
+    (tid, pid)
+}
+
