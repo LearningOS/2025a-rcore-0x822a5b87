@@ -11,7 +11,8 @@ use crate::{
         current_process, current_task, current_user_token, exit_current_and_run_next, pid2process,
         suspend_current_and_run_next, SignalFlags,
     },
-    util};
+    util,
+};
 use alloc::{string::String, sync::Arc, vec::Vec};
 
 #[repr(C)]
@@ -138,7 +139,6 @@ pub fn sys_exec(path: *const u8, mut args: *const usize) -> isize {
     let mut args_vec: Vec<String> = Vec::new();
 
     loop {
-
         let arg_str_ptr = *translated_ref(token, args);
         if arg_str_ptr == 0 {
             break;
@@ -168,11 +168,7 @@ pub fn sys_exec(path: *const u8, mut args: *const usize) -> isize {
 pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
     //trace!("kernel: sys_waitpid");
     let process = current_process();
-    trace!(
-        "kernel::pid[{}] sys_waitpid [{}]",
-        process.pid.0,
-        pid
-    );
+    trace!("kernel::pid[{}] sys_waitpid [{}]", process.pid.0, pid);
     let mut inner = process.inner_exclusive_access();
     if !inner
         .children
@@ -221,11 +217,16 @@ pub fn sys_kill(pid: usize, signal: u32) -> isize {
     }
 }
 
+/// change data segment size
+pub fn sys_sbrk(size: i32) -> isize {
+    trace!(
+        "kernel:pid[{}] sys_sbrk",
+        current_task().unwrap().process.upgrade().unwrap().getpid()
+    );
+    size as isize
+}
+
 /// get_time syscall
-///
-/// YOUR JOB: get time with second and microsecond
-/// HINT: You might reimplement it with virtual memory management.
-/// HINT: What if [`TimeVal`] is split by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
     let us = get_time_us();
@@ -241,7 +242,6 @@ pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     let _ = util::io::serialize_struct(t, pa);
     0
 }
-
 
 #[allow(unused)]
 pub fn sys_trace(trace_request: usize, id: usize, data: usize) -> isize {
@@ -311,15 +311,6 @@ pub fn sys_munmap(start: usize, len: usize) -> isize {
         }
     }
 }
-
-/// change data segment size
-// pub fn sys_sbrk(size: i32) -> isize {
-//     trace!("kernel:pid[{}] sys_sbrk", current_task().unwrap().process.upgrade().unwrap().getpid());
-//     if let Some(old_brk) = current_task().unwrap().change_program_brk(size) {
-//         old_brk as isize
-//     } else {
-//     -1
-// }
 
 pub fn sys_spawn(path: *const u8) -> isize {
     let current_task = current_task().unwrap();
