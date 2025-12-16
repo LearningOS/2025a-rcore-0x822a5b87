@@ -19,6 +19,32 @@ pub struct TaskControlBlock {
 }
 
 impl TaskControlBlock {
+    /// Create a new task
+    pub fn new(
+        process: Arc<ProcessControlBlock>,
+        ustack_base: usize,
+        alloc_user_res: bool,
+    ) -> Self {
+        let res = TaskUserRes::new(Arc::clone(&process), ustack_base, alloc_user_res);
+        let trap_cx_ppn = res.trap_cx_ppn();
+        let kstack = kstack_alloc();
+        let kstack_top = kstack.get_top();
+        Self {
+            process: Arc::downgrade(&process),
+            kstack,
+            inner: unsafe {
+                UPSafeCell::new(TaskControlBlockInner {
+                    res: Some(res),
+                    trap_cx_ppn,
+                    task_cx: TaskContext::goto_trap_return(kstack_top),
+                    task_status: TaskStatus::Ready,
+                    exit_code: None,
+                    prio: 16,
+                    pass: 0,
+                })
+            },
+        }
+    }
     /// Get the mutable reference of the inner TCB
     pub fn inner_exclusive_access(&self) -> RefMut<'_, TaskControlBlockInner> {
         self.inner.exclusive_access()
@@ -28,6 +54,12 @@ impl TaskControlBlock {
         let process = self.process.upgrade().unwrap();
         let inner = process.inner_exclusive_access();
         inner.memory_set.token()
+    }
+
+    /// Get current thread tid
+    pub fn get_tid(&self) -> Option<usize> {
+        let inner = self.inner_exclusive_access();
+        inner.get_tid()
     }
 }
 
@@ -65,33 +97,15 @@ impl TaskControlBlockInner {
     pub fn add_stride(&mut self) {
         self.pass += BIG_STRIDE / self.prio;
     }
-}
 
-impl TaskControlBlock {
-    /// Create a new task
-    pub fn new(
-        process: Arc<ProcessControlBlock>,
-        ustack_base: usize,
-        alloc_user_res: bool,
-    ) -> Self {
-        let res = TaskUserRes::new(Arc::clone(&process), ustack_base, alloc_user_res);
-        let trap_cx_ppn = res.trap_cx_ppn();
-        let kstack = kstack_alloc();
-        let kstack_top = kstack.get_top();
-        Self {
-            process: Arc::downgrade(&process),
-            kstack,
-            inner: unsafe {
-                UPSafeCell::new(TaskControlBlockInner {
-                    res: Some(res),
-                    trap_cx_ppn,
-                    task_cx: TaskContext::goto_trap_return(kstack_top),
-                    task_status: TaskStatus::Ready,
-                    exit_code: None,
-                    prio: 16,
-                    pass: 0,
-                })
-            },
+    pub fn get_tid(&self) -> Option<usize> {
+        match &self.res {
+            None => {
+                None
+            }
+            Some(res) => {
+                Some(res.tid)
+            }
         }
     }
 }
