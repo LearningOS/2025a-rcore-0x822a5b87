@@ -10,6 +10,20 @@
 - [uCore文件系统](https://0x822a5b87.github.io/2025/12/09/uCore%E6%96%87%E4%BB%B6%E7%B3%BB%E7%BB%9F/)
 - [uCore进程间通信](https://0x822a5b87.github.io/2025/12/13/uCore%E8%BF%9B%E7%A8%8B%E9%97%B4%E9%80%9A%E4%BF%A1/)
 
+## 执行
+
+```bash
+cd os
+make run
+
+# execute command in bash.
+ch8_deadlock_sem2
+
+ch8_deadlock_sem1
+```
+
+![screenshot](./resources/20251217.png)
+
 ## Code
 
 - [Soure Code of labs](https://github.com/LearningOS/rCore-Tutorial-Code)
