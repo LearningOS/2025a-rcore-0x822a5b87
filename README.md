@@ -12,6 +12,8 @@
 
 ## 执行
 
+该 `os` 是基于 `rust` 和 `riscv` 平台开发的一个简易 `os`，目前在 `ubuntu 20` 和 `Darwin Kernel Version 24.1.0` 系统下测试正常。其他依赖请参考 [rCore-Tutorial-Guide 文档 - 实验环境配置](https://learningos.cn/rCore-Tutorial-Guide/0setup-devel-env.html)。
+
 ```bash
 cd os
 make run
