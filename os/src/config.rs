@@ -29,6 +29,6 @@ pub const DEADLOCK_SIGNAL: i32 = -0xdead;
 /// need wait
 pub const WAIT_SIGNAL: i32 = 1234;
 /// max thread
-pub const MAX_THREAD: usize = 0x5;
+pub const MAX_THREAD: usize = 0x12;
 /// max lock
-pub const MAX_LOCK: usize = 0x5;
+pub const MAX_LOCK: usize = 0x10;

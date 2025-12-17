@@ -65,10 +65,9 @@ pub struct DeadlockDetector {
 }
 
 pub struct DeadlockDetectorInner {
-    allocator: RecycleAllocator,
+    mutex_allocator: RecycleAllocator,
+    semaphore_allocator: RecycleAllocator,
     available: [usize; MAX_LOCK],
-    cond_vars: Vec<Condvar>,
-    locker: Vec<Arc<MutexBlocking>>,
     allocation: [[usize; MAX_LOCK]; MAX_THREAD],
     need: [[usize; MAX_LOCK]; MAX_THREAD],
 }
@@ -112,7 +111,7 @@ impl ProcessControlBlockInner {
 
     /// create_mutex
     pub fn create_mutex(&mut self, tid: usize, blocking: bool) -> isize {
-        let mutex_id = self.deadlock_detector.alloc_id(tid, 1);
+        let mutex_id = self.deadlock_detector.mutex_alloc_id(tid, 1);
         let mutex: Option<Arc<dyn Mutex>> = if !blocking {
             Some(Arc::new(MutexSpin::new(mutex_id)))
         } else {
@@ -142,7 +141,7 @@ impl ProcessControlBlockInner {
 
     /// create_semaphore
     pub fn create_semaphore(&mut self, tid: usize, res_count: usize) -> usize {
-        let mutex_id = self.deadlock_detector.alloc_id(tid, res_count);
+        let mutex_id = self.deadlock_detector.semaphore_alloc_id(tid, res_count);
         let id = if let Some(id) = self
             .semaphore_list
             .iter()
@@ -371,50 +370,18 @@ impl ProcessControlBlock {
 
 impl DeadlockDetector {
     pub unsafe fn new() -> DeadlockDetector {
-        let mut allocator = RecycleAllocator::new();
-        let inner_lock_id = allocator.alloc();
-        let mut cond_vars = vec![];
-        let mut lockers = vec![];
-        for i in 0..MAX_LOCK {
-            cond_vars.push(Condvar::new());
-            lockers.push(Arc::new(MutexBlocking::new(i)));
-        }
-
+        let mut allocator1 = RecycleAllocator::new();
+        let mut allocator2 = RecycleAllocator::new();
         let detector = DeadlockDetector {
             inner: DeadlockDetectorInner {
-                allocator,
-                available: [0; MAX_THREAD],
-                cond_vars,
-                locker: lockers,
+                mutex_allocator:allocator1,
+                semaphore_allocator:allocator2,
+                available: [0; MAX_LOCK],
                 allocation: [[0; MAX_LOCK]; MAX_THREAD],
                 need: [[0; MAX_LOCK]; MAX_THREAD],
             },
         };
         detector
-    }
-
-    pub fn push_thread_available(&mut self, _tid: usize) {
-        // {
-        //     // TODO delete me
-        //     println!("push thread tid [{}]", tid);
-        // }
-        //
-        // self.lock();
-        // let mut inner = self.inner.exclusive_access();
-        // for _ in inner.allocation.len()..=tid {
-        //     inner.allocation.push(vec![]);
-        //     inner.need.push(vec![]);
-        //     {
-        //         // TODO delete me
-        //         println!(
-        //             "push thread [{}], allocation len = [{}], need len = [{}]",
-        //             tid,
-        //             inner.allocation.len(),
-        //             inner.need.len()
-        //         );
-        //     }
-        // }
-        // self.unlock();
     }
 
     fn push_lock_available(&mut self, tid: usize, id: usize, count: usize) {
@@ -498,12 +465,18 @@ impl DeadlockDetector {
         // self.unlock();
     }
 
-    pub fn alloc_id(&mut self, tid: usize, count: usize) -> usize {
-        // self.lock();
+    pub fn mutex_alloc_id(&mut self, tid: usize, count: usize) -> usize {
         let inner = &mut self.inner;
-        let id = inner.allocator.alloc();
+        let id = inner.semaphore_allocator.alloc();
         self.push_lock_available(tid, id, count);
-        // self.unlock();
+        id
+    }
+
+    pub fn semaphore_alloc_id(&mut self, tid: usize, count: usize) -> usize {
+        let inner = &mut self.inner;
+        let id = inner.semaphore_allocator.alloc();
+        println!("id = {}", id);
+        self.push_lock_available(tid, id, count);
         id
     }
 
@@ -527,7 +500,6 @@ impl DeadlockDetectorInner {
         let thread_alloc = &mut self.allocation[tid];
         thread_alloc[id] -= 1;
         self.available[id] += 1;
-        self.cond_vars[id].signal();
     }
 
     #[allow(unused)]
