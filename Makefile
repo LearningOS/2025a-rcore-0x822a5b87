@@ -3,7 +3,13 @@ DOCKER_NAME ?= rcore-docker
 .PHONY: docker build_docker attach_docker rebuild_docker fmt
 
 docker:
-	@if docker ps -a --filter "name=^/${CONTAINER_NAME}$$" --format "{{.Names}}" | grep -q "${CONTAINER_NAME}"; then \
+	if ! docker images --format "{{.Repository}}" | grep -q "^${DOCKER_NAME}$$"; then \
+		echo "❌ image '${DOCKER_NAME}' not exits，start building..."; \
+		make build_docker; \
+	else \
+		echo "✅ image '${DOCKER_NAME}' was built, skip building..."; \
+	fi; \
+	if docker ps -a --filter "name=^/${CONTAINER_NAME}$$" --format "{{.Names}}" | grep -q "${CONTAINER_NAME}"; then \
 		echo "✅ find existing container: ${CONTAINER_NAME}，accessing..."; \
 		if ! docker ps --filter "name=^/${CONTAINER_NAME}$$" --format "{{.Names}}" | grep -q "${CONTAINER_NAME}"; then \
 			echo "🔧 container isn't running，start launching..."; \
